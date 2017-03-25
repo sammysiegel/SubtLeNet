@@ -1,0 +1,2 @@
+# BAdNet
+Boosted Adversarial Networks
