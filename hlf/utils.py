@@ -1,10 +1,37 @@
 import numpy as np 
 import matplotlib.pyplot as plt 
-import seaborn 
+# import seaborn 
 from collections import namedtuple
 import theano 
 from keras import backend as K
 from keras.engine.topology import Layer
+from scipy.interpolate import interp1d
+
+def make_trainable(net, val):
+    net.trainable = val
+    for l in net.layers:
+        l.trainable = val
+
+## Loss functions 
+
+def adversarial_loss(y_true, y_pred, g_weight=1):
+    '''Loss function for stack of adversarial networks
+    
+    TODO : generalize the dimensionality 
+           maybe drop one-hot in favor of class labels?
+
+    Arguments:
+        y_true -- array of structure [category,true_mass,true_class,...]
+        y_pred -- array of structure [d_output,g_output_0,g_output_1,...]
+        g_weight -- weight for the adversarial part of the cost 
+    '''
+    loss_d = K.categorical_crossentropy(y_pred[:,0:2],y_true[:,0:2])
+    # apply MSE error only to background 
+    loss_g = K.mean(y_true[:,0] * K.square(y_pred[:,2] - y_true[:,2]), axis=-1) 
+    return loss_d - g_weight*loss_g 
+
+
+## Layers and ops 
 
 class ReverseGradient(theano.Op):
     """ theano operation to reverse the gradients
@@ -60,6 +87,9 @@ class GradientReversalLayer(Layer):
         base_config = super(GradientReversalLayer, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
+
+## plotting tools 
+
 class H1:
     '''Wrapper around numpy histogram
     '''
@@ -87,11 +117,29 @@ class H1:
         return np.sum(self.content[lo:hi] * widths)
 
 
+def plot_hists(props, hists):
+    plt.clf() 
+    bins = props['bins']
+    for h in hists:
+        plt.hist(h['vals'], bins=bins, weights=h['weights']/np.sum(h['weights']),
+                 histtype='step', # fill=False, 
+                 color=h['color'], label=h['label'])
+    if 'xlabel' in props:
+        plt.xlabel(props['xlabel'])
+    if 'ylabel' in props:
+        plt.ylabel(props['ylabel'])
+    plt.legend(loc=0)
+    plt.savefig(props['output']+'.png',bbox_inches='tight',dpi=300)
+    plt.savefig(props['output']+'.pdf',bbox_inches='tight')
+
+
+
 Tagger = namedtuple('Tagger',['response','name','lo','hi','flip'])
 
 def create_roc(taggers, labels, weights, output, nbins=50):
     colors = ['k','r','g','b']
     plt.clf()
+    wps = []
     for t in taggers:
         color = colors[0]
         del colors[0]
@@ -103,6 +151,7 @@ def create_roc(taggers, labels, weights, output, nbins=50):
                                 weights=weights[labels==0],
                                 bins=nbins,range=(t.lo,t.hi),
                                 density=True))
+
         epsilons_sig = []
         epsilons_bkg = []
         for ib in xrange(nbins):
@@ -114,7 +163,11 @@ def create_roc(taggers, labels, weights, output, nbins=50):
                 ebkg = h_bkg.integral(lo=ib)
             epsilons_sig.append(esig)
             epsilons_bkg.append(ebkg)
-    
+        
+        interp = interp1d(epsilons_bkg,
+                          np.arange(t.lo,t.hi,float(t.hi-t.lo)/nbins))
+        wps.append(interp(0.05))
+
         plt.plot(epsilons_sig, epsilons_bkg, color+'-',label=t.name)
     plt.axis([0,1,0.001,1])
     plt.yscale('log')
@@ -124,3 +177,4 @@ def create_roc(taggers, labels, weights, output, nbins=50):
     plt.savefig(output+'.png',bbox_inches='tight',dpi=300)
     plt.savefig(output+'.pdf',bbox_inches='tight')
 
+    return wps
