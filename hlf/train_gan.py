@@ -117,7 +117,7 @@ gan_g = g_model(gan_reverse_1)
 gan_reverse_2 = GradientReversalLayer(hp_lambda=1, name='reversal_2')(gan_g)
 gan_output = concatenate([gan_d,gan_reverse_2],axis=1)
 
-my_adversarial_loss = partial(adversarial_loss, g_weight=1.)
+my_adversarial_loss = partial(adversarial_loss, g_weight=100.)
 my_adversarial_loss.__name__ = "my_adversarial_loss" # partial doesn't do this for some reason
 gan_model = Model(inputs=gan_input, outputs=gan_output)
 gan_model.compile(optimizer=Adam(lr=0.001),
