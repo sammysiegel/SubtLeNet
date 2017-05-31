@@ -1,11 +1,11 @@
-#!/usr/bin/env python
+#!/usr/local/bin/python2.7
 
 from sys import exit 
 from os import environ
-environ['KERAS_BACKEND'] = 'theano'
+environ['KERAS_BACKEND'] = 'tensorflow'
 
 import numpy as np
-from utils import create_roc, Tagger
+#from utils import create_roc, Tagger
 
 
 from keras.layers import Input, Dense, Dropout, Activation
@@ -100,16 +100,16 @@ score = model.evaluate(x['test'], y['test'], batch_size=32, verbose=1, sample_we
 print '' 
 print 'DNN score =',score
 
-dnn_t = Tagger(y_pred[:,1], 'DNN', 0, 1, False)
-bdt_t = Tagger(bdt['test'], 'BDT', -1, 1, False)
-create_roc([dnn_t,bdt_t],
-           np.argmax(y['test'],axis=1),
-           w['test'],'simple')
-
-
-mask = np.logical_and(110<mass['test'], mass['test']<210)
-dnn_t_mass = Tagger(y_pred[:,1][mask], 'DNN', 0, 1, False)
-bdt_t_mass = Tagger(bdt['test'][mask], 'BDT', -1, 1, False)
-create_roc([dnn_t_mass,bdt_t_mass],
-           np.argmax(y['test'][mask],axis=1),
-           w['test'][mask],'simple_mass')
+# dnn_t = Tagger(y_pred[:,1], 'DNN', 0, 1, False)
+# bdt_t = Tagger(bdt['test'], 'BDT', -1, 1, False)
+# create_roc([dnn_t,bdt_t],
+#            np.argmax(y['test'],axis=1),
+#            w['test'],'simple')
+# 
+# 
+# mask = np.logical_and(110<mass['test'], mass['test']<210)
+# dnn_t_mass = Tagger(y_pred[:,1][mask], 'DNN', 0, 1, False)
+# bdt_t_mass = Tagger(bdt['test'][mask], 'BDT', -1, 1, False)
+# create_roc([dnn_t_mass,bdt_t_mass],
+#            np.argmax(y['test'][mask],axis=1),
+#            w['test'][mask],'simple_mass')
