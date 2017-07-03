@@ -69,7 +69,7 @@ conv = Convolution1D(16, 1, padding='valid', activation='relu')(conv)
 conv = Convolution1D(8, 1, padding='valid', activation='relu')(conv)
 conv = Convolution1D(4, 1, padding='valid', activation='relu')(conv)
 
-lstm = LSTM(100)(pool)
+lstm = LSTM(100)(conv)
 
 output = Dense(2, activation='softmax')(lstm)
 
