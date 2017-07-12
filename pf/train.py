@@ -2,6 +2,8 @@
 
 from sys import exit 
 from os import environ
+#environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"   # see issue #152
+#environ["CUDA_VISIBLE_DEVICES"] = ""
 environ['KERAS_BACKEND'] = 'tensorflow'
 
 import numpy as np
