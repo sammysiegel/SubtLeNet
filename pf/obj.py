@@ -4,10 +4,14 @@ from os import environ
 environ['KERAS_BACKEND'] = 'tensorflow'
 from glob import glob 
 from keras.utils import np_utils
+from re import sub 
+from utils import *
 
 DEBUG = False 
 
-_singletons = ['pt','eta','mass','msd','rho','tau32','tau21','flavour','nbHadrons','nProngs']
+_singletons = ['pt','eta','mass','msd','rho','tau32','tau21','flavour',
+               'nbHadrons','nProngs','nResonanceProngs','resonanceType',
+               'nB','nC']
 singletons = {_singletons[x]:x for x in xrange(len(_singletons))}
 
 class DataObject(object):
@@ -74,6 +78,7 @@ class DataCollection(object):
                 self.input_partitions['test'].append(sidx)
             else:
                 self.input_partitions['train'].append(sidx)
+        if DEBUG: print self.input_partitions['train']
         self.cached_input_partitions = {}
         for k,v in self.input_partitions.iteritems():
             self.cached_input_partitions[k] = v[:]
@@ -96,40 +101,17 @@ class DataCollection(object):
             data[k] = v[indices]
         return data 
 
-class NH1(object):
-    def __init__(self, bins):
-        self.bins = bins 
-        self._content = {x:0 for x in xrange(len(bins)+1)}
-    def find_bin(self, x):
-        for ix in xrange(len(self.bins)):
-            if x < self.bins[ix]:
-                return ix 
-        return len(self.bins)
-    def get_content(self, ix):
-        return self._content[ix]
-    def set_content(self, ix):
-        self._content[ix] = 0
-    def fill(self, x, y=1):
-        self._content[self.find_bin(x)] += y
-    def invert(self):
-        for k,v in self._content.iteritems():
-            if v:
-                self._content[k] = 1./v 
-    def eval_array(self, arr):
-        ret = np.empty(arr.shape)
-        for ix in xrange(arr.shape[0]):
-            ret[ix] = self.get_content(self.find_bin(arr[ix]))
-        return ret 
-
 class PFSVCollection(DataCollection):
     def __init__(self):
         super(PFSVCollection, self).__init__()
         self.pt_weight = None 
+        self.fpath = None 
     def add_classes(self, names, fpath):
         '''
         fpath must be of the form /some/path/to/files_*_XXXX.npy, 
         where XXXX gets replaced by the names
         '''
+        self.fpath = fpath 
         basefiles = glob(fpath.replace('XXXX','singletons'))
         to_add = {n:[] for n in names}
         for f in basefiles:
@@ -151,16 +133,26 @@ class PFSVCollection(DataCollection):
             [0,40,80,120,160,200,250,300,350,400,450,500,600,700,800,1000,1200,1400,2000]
             )
         for o in self.objects['singletons'].inputs:
-            pt = np.load(o)[:,singletons['pt']]
-            for x in pt:
-                self.pt_weight.fill(x)
+            self.pt_weight.add_from_file(sub(r'[0-9]+_singletons', 'ptweight', o))
+        n_entries = self.pt_weight.integral()
         self.pt_weight.invert()
         if DEBUG: print 'Calculated weight         '
+        print 'Loaded a total of %i samples from %s' % (n_entries, self.fpath)
     def __getitem__(self, indices=None):
         data = super(PFSVCollection, self).__getitem__(indices)
         data['weight'] = self.pt_weight.eval_array(data['singletons'][:,singletons['pt']])
-        data['nP'] = np_utils.to_categorical(data['singletons'][:,singletons['nProngs']].astype(np.int),5)
-        data['nB'] = np_utils.to_categorical(data['singletons'][:,singletons['nbHadrons']].astype(np.int),5)
+        data['nP'] = np_utils.to_categorical(
+                data['singletons'][:,singletons['resonanceType']].astype(np.int),
+                5
+            )
+        data['nB'] = np_utils.to_categorical(
+                data['singletons'][:,singletons['nB']].astype(np.int),
+                10
+            )
+        # data['nC'] = np_utils.to_categorical(
+        #         data['singletons'][:,singletons['nC']].astype(np.int),
+        #         5
+        #     )
         return data 
     def generator(self, partition='train', batch=5):
         # used as a generator for training data
@@ -200,4 +192,5 @@ def generatePFSV(collections, partition='train', batch=32):
         for j in xrange(2):
             merged_outputs.append(np.concatenate([v[j] for v in outputs], axis=0))
         merged_weights = np.concatenate(weights, axis=0)
-        yield merged_inputs, merged_outputs, [merged_weights, merged_weights]
+        yield merged_inputs, merged_outputs[:1], [merged_weights]
+        # yield merged_inputs, merged_outputs, [merged_weights, merged_weights]

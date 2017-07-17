@@ -14,6 +14,7 @@ from keras.callbacks import ModelCheckpoint
 from keras.optimizers import Adam 
 from keras.utils import np_utils
 import obj 
+obj.DEBUG = True
 
 from keras import backend as K
 K.set_image_data_format('channels_last')
@@ -24,22 +25,20 @@ def make_coll(fpath):
     coll.add_classes(['singletons', 'charged', 'inclusive', 'sv'], fpath) 
     return coll 
 
-qcd_1 = make_coll('/home/snarayan/hscratch/baconarrays/v13.2/QCD_*_1_XXXX.npy')
-qcd_2 = make_coll('/home/snarayan/hscratch/baconarrays/v13.2/QCD_*_2_XXXX.npy')
-top_1 = make_coll('/home/snarayan/hscratch/baconarrays/v13.2/BulkGravTohhTohbbhbb_*_1_XXXX.npy')
-top_2 = make_coll('/home/snarayan/hscratch/baconarrays/v13.2/BulkGravTohhTohbbhbb_*_2_XXXX.npy')
-top_3 = make_coll('/home/snarayan/hscratch/baconarrays/v13.2/BulkGravTohhTohbbhbb_*_3_XXXX.npy')
+top_4 = make_coll('/home/snarayan/hscratch/baconarrays/v3/RSGluonToTT_*_4_XXXX.npy') # T
+top_2 = make_coll('/home/snarayan/hscratch/baconarrays/v3/RSGluonToTT_*_2_XXXX.npy') # W
+qcd_0 = make_coll('/home/snarayan/hscratch/baconarrays/v3/QCD_*_0_XXXX.npy') # q/g
 
-data = [qcd_1, top_2]
+data = [top_4, top_2, qcd_0]
 # data = [qcd_1, qcd_2, top_1, top_2, top_3]
 
 # preload some data just to get the dimensions
-qcd_1.objects['charged'].load(memory=False)
-qcd_1.objects['inclusive'].load(memory=False)
-qcd_1.objects['sv'].load(memory=False)
+data[0].objects['charged'].load(memory=False)
+data[0].objects['inclusive'].load(memory=False)
+data[0].objects['sv'].load(memory=False)
 
 # charged layer
-dims = qcd_1.objects['charged'].data.shape
+dims = data[0].objects['charged'].data.shape
 input_charged = Input(shape=(dims[1], dims[2]), name='input_charged')
 conv = Convolution1D(32, 1, padding='valid', activation='relu', input_shape=(dims[1],dims[2]))(input_charged)
 conv = Convolution1D(16, 1, padding='valid', activation='relu')(conv)
@@ -48,7 +47,7 @@ conv = Convolution1D(4, 1, padding='valid', activation='relu')(conv)
 lstm_charged = LSTM(20)(conv)
 
 # inclusive layer
-dims = qcd_1.objects['inclusive'].data.shape 
+dims = data[0].objects['inclusive'].data.shape 
 input_inclusive = Input(shape=(dims[1], dims[2]), name='input_inclusive')
 conv = Convolution1D(32, 1, padding='valid', activation='relu', input_shape=(dims[1],dims[2]))(input_inclusive)
 conv = Convolution1D(16, 1, padding='valid', activation='relu')(conv)
@@ -57,7 +56,7 @@ conv = Convolution1D(4, 1, padding='valid', activation='relu')(conv)
 lstm_inclusive = LSTM(20)(conv)
 
 # sv layer
-dims = qcd_1.objects['sv'].data.shape 
+dims = data[0].objects['sv'].data.shape 
 input_sv = Input(shape=(dims[1], dims[2]), name='input_sv')
 conv = Convolution1D(32, 1, padding='valid', activation='relu', input_shape=(dims[1],dims[2]))(input_sv)
 conv = Convolution1D(16, 1, padding='valid', activation='relu')(conv)
@@ -69,10 +68,11 @@ lstm_sv = LSTM(20)(conv)
 # merge
 merge = concatenate([lstm_charged, lstm_inclusive, lstm_sv])
 output_p = Dense(5, activation='softmax')(merge)
-output_b = Dense(5, activation='softmax')(merge)
+output_b = Dense(10, activation='softmax')(merge)
 
 
-model = Model(inputs=[input_charged, input_inclusive, input_sv], outputs=[output_p, output_b])
+# model = Model(inputs=[input_charged, input_inclusive, input_sv], outputs=[output_p, output_b])
+model = Model(inputs=[input_charged, input_inclusive, input_sv], outputs=[output_p])
 model.compile(optimizer=Adam(),
               loss='categorical_crossentropy',
               metrics=['accuracy'])
@@ -86,7 +86,7 @@ validation_generator = obj.generatePFSV(data, partition='validate', batch=10000)
 # model.fit(x, y, sample_weight=w, epochs=1, batch_size=32, verbose=1)
 
 model.fit_generator(train_generator, 
-                    steps_per_epoch=1000, 
+                    steps_per_epoch=100000, 
                     epochs=1, 
                     validation_data=validation_generator, 
                     validation_steps=100)
