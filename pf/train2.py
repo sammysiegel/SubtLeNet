@@ -25,9 +25,9 @@ def make_coll(fpath):
     coll.add_classes(['singletons', 'charged', 'inclusive', 'sv'], fpath) 
     return coll 
 
-top_4 = make_coll('/home/snarayan/hscratch/baconarrays/v3/RSGluonToTT_*_4_XXXX.npy') # T
-top_2 = make_coll('/home/snarayan/hscratch/baconarrays/v3/RSGluonToTT_*_2_XXXX.npy') # W
-qcd_0 = make_coll('/home/snarayan/hscratch/baconarrays/v3/QCD_*_0_XXXX.npy') # q/g
+top_4 = make_coll('/home/snarayan/hscratch/baconarrays/v4/RSGluonToTT_*_4_XXXX.npy') # T
+top_2 = make_coll('/home/snarayan/hscratch/baconarrays/v4/RSGluonToTT_*_2_XXXX.npy') # W
+qcd_0 = make_coll('/home/snarayan/hscratch/baconarrays/v4/QCD_*_0_XXXX.npy') # q/g
 
 data = [top_4, top_2, qcd_0]
 # data = [qcd_1, qcd_2, top_1, top_2, top_3]

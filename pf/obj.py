@@ -82,15 +82,20 @@ class DataCollection(object):
         self.cached_input_partitions = {}
         for k,v in self.input_partitions.iteritems():
             self.cached_input_partitions[k] = v[:]
-    def load(self, idx=-1, partition=None):
+    def load(self, idx=-1, partition=None, repartition=True, memory=True, components=None):
         if partition:
-            if not self.input_partitions:
+            if self.input_partitions == None:
                 self.partition() 
             if not len(self.input_partitions[partition]):
+                if not repartition:
+                    return False
                 self.input_partitions[partition] = self.cached_input_partitions[partition][:]
             idx = self.input_partitions[partition].pop(0)
         for k,v in self.objects.iteritems():
-            v.load(idx)
+            if components and k != components:
+                continue
+            v.load(idx, memory)
+        return True 
     def n_available(self):
         ns = [v.n_available for _,v in self.objects.iteritems()]
         assert(max([abs(x - ns[0]) for x in ns]) == 0)
@@ -133,8 +138,8 @@ class PFSVCollection(DataCollection):
             [0,40,80,120,160,200,250,300,350,400,450,500,600,700,800,1000,1200,1400,2000]
             )
         for o in self.objects['singletons'].inputs:
-            self.pt_weight.add_from_file(sub(r'[0-9]+_singletons', 'ptweight', o))
-        n_entries = self.pt_weight.integral()
+            self.pt_weight.add_from_file(sub('singletons', 'ptweight', o))
+        n_entries = int(self.pt_weight.integral())
         self.pt_weight.invert()
         if DEBUG: print 'Calculated weight         '
         print 'Loaded a total of %i samples from %s' % (n_entries, self.fpath)
@@ -154,11 +159,23 @@ class PFSVCollection(DataCollection):
         #         5
         #     )
         return data 
+    def draw_singletons(self, vars, partition='test'):
+        if not self.pt_weight:
+            self.weight()
+        hists = {var:NH1(bins) for var,bins in vars}
+        while self.load(partition=partition, repartition=False, components='singletons', memory=False):
+            data = self.__getitem__()
+            weight = self.pt_weight.eval_array(data['singletons'][:,singletons['pt']])
+            for var,_ in vars:
+                hists[var].fill_array(data['singletons'][:,singletons[var]], weight)
+        return hists
     def generator(self, partition='train', batch=5):
         # used as a generator for training data
-        self.weight()
+        if not self.pt_weight:
+            self.weight()
         while True:
-            self.load(partition=partition)
+            if not self.load(partition=partition):
+                raise StopIteration
             data = self.__getitem__()
             inputs = [data[x] for x in ['charged', 'inclusive', 'sv']]
             outputs = [data[x] for x in ['nP', 'nB']]
