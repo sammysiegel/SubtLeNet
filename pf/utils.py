@@ -2,10 +2,19 @@ import numpy as np
 from collections import namedtuple
 from scipy.interpolate import interp1d
 
-import matplotlib
-matplotlib.use('cairo')
-from matplotlib import pyplot as plt 
-import seaborn 
+import matplotlib as mpl
+mpl.use('cairo')
+from matplotlib import pyplot as plt
+import seaborn
+
+## general layout                                                                                                                      
+seaborn.set(style="ticks")
+seaborn.set_context("poster")
+mpl.rcParams['axes.linewidth'] = 1.25
+fig_size = plt.rcParams['figure.figsize']
+fig_size[0] = 10
+fig_size[1] = 9
+plt.rcParams['figure.figsize'] = fig_size
 
 ## plotting
 
@@ -108,6 +117,59 @@ class Plotter(object):
 
 
 p = Plotter()
+
+
+class Roccer(object):
+    def __init__(self):
+        self.ROCs = []
+    def addROCs(self, sig_hists, bkg_hists, labels, plotstyles):
+        try:
+            for h in sig_hists:
+                self.ROCs.append((sig_hists[h], bkg_hists[h], labels[h], plotstyles[h]))
+        except:#only one sig_hist was handed over - not iterable
+            self.ROCs.append((sig_hists,bkg_hists,labels,plotstyles))
+    def plotROCs(self, opts, nbins = 100):
+        fig, ax = plt.subplots(1)
+        ax.get_xaxis().set_tick_params(which='both',direction='in')
+        ax.get_yaxis().set_tick_params(which='both',direction='in')
+        ax.grid(True,ls='-.',lw=0.4,zorder=-99,color='gray',alpha=0.7,which='both')
+
+        min_value = 1
+
+        for sig_hist, bkg_hist, label, plotstyle in self.ROCs:
+            h_sig = sig_hist
+            h_bkg = bkg_hist
+            rmin = h_sig.bins[0]
+            rmax = h_sig.bins[len(h_sig.bins)-1]
+
+            epsilons_sig = []
+            epsilons_bkg = []
+
+            for ib in xrange(nbins):
+                if True:
+                    esig = h_sig.integral(hi=ib)
+                    ebkg = h_bkg.integral(hi=ib)
+                else:
+                    esig = h_sig.integral(lo=ib)
+                    ebkg = h_bkg.integral(lo=ib)
+                epsilons_sig.append(esig)
+                epsilons_bkg.append(ebkg)
+                if ebkg < min_value and ebkg > 0:
+                    min_value = ebkg
+
+            #print epsilons_sig
+            plt.plot(epsilons_sig[1:], epsilons_bkg[1:], plotstyle,label=label,linewidth=2)
+
+        plt.axis([0,1,0.005,1])
+        plt.yscale('log', nonposy='clip')
+        plt.legend(loc=4, fontsize=22)
+        plt.ylabel('Background fake rate', fontsize=24)
+        plt.xlabel('Signal efficiency', fontsize=24)
+        ax.set_yticks([0.01,0.1,1])
+        ax.set_yticklabels(['0.01','0.1','1'])
+
+        plt.savefig(opts['output']+'.png',bbox_inches='tight',dpi=300)
+        plt.savefig(opts['output']+'.pdf',bbox_inches='tight')
 
 
 # class H1:

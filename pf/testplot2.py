@@ -46,6 +46,10 @@ def draw(partition='test'):
     p.add_hist(h_qcd[k], 'q/g', 'k')
     p.plot({'xlabel':labels[k], 'ylabel':'Probability', 'output':'/home/snarayan/public_html/figs/%s/'%partition+k})
 
+  if partition=='test':  
+      r = utils.Roccer()
+      r.addROCs(h_top,h_qcd,labels,colors)
+      r.plotROCs({'output':'/home/snarayan/public_html/figs/%s/roc'%partition})      
 
 draw()
 draw('validate')
