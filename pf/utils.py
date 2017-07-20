@@ -157,7 +157,7 @@ class Roccer(object):
                 if ebkg < min_value and ebkg > 0:
                     min_value = ebkg
 
-            print epsilons_sig
+            #print epsilons_sig
             plt.plot(epsilons_sig[1:], epsilons_bkg[1:], plotstyle,label=label,linewidth=2)
 
         plt.axis([0,1,0.005,1])
