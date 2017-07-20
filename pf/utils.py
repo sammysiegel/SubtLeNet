@@ -14,7 +14,7 @@ def sanitize_mask(x):
 
 class NH1(object):
     def __init__(self, bins=[]):
-        self.bins = np.array(bins )
+        self.bins = np.array(bins, dtype=np.float64)
         self._content = np.array([0 for x in range(len(bins)+1)], dtype=np.float64)
     def find_bin(self, x):
         for ix in xrange(len(self.bins)):
@@ -30,7 +30,9 @@ class NH1(object):
     def fill_array(self, x, weights=None):
         mask = sanitize_mask(x)
         mask &= sanitize_mask(weights)
-        hist = np.histogram(x[mask], bins=self.bins, weights=weights[mask], density=False)[0]
+        x_masked = x[mask]
+        weights_masked = None if (weights is None) else weights[mask]
+        hist = np.histogram(x_masked, bins=self.bins, weights=weights_masked, density=False)[0]
         self._content += np.concatenate([[0],hist,[0]])
     def add_array(self, arr):
         self._content += arr.astype(np.float64)
@@ -46,7 +48,13 @@ class NH1(object):
         self._content = load_arr[1]
     def add_from_file(self, fpath):
         load_arr = np.load(fpath)
-        assert(np.array_equal(load_arr[0][1:-1], self.bins))
+        try:
+            assert(np.array_equal(load_arr[0][1:-1], self.bins))
+        except AssertionError as e:
+            print fpath 
+            print load_arr[0]
+            print self.bins 
+            raise e
         add_content = load_arr[1].astype(np.float64)
         self._content += add_content
     def integral(self):
@@ -55,9 +63,10 @@ class NH1(object):
         norm = float(scale if scale else 1./self.integral())
         self._content *= norm 
     def invert(self):
-        for k,v in zip(xrange(self._content.shape[0]), self._content):
-            if v:
-                self._content[k] = 1000./v # avoid making the weights tiny
+        for ix in range(self._content.shape[0]):
+            val = self._content[ix]
+            if val:
+                self._content[ix] = 1000./val
     def eval_array(self, arr):
         def f(x):
             return self.get_content(self.find_bin(x))
@@ -80,6 +89,9 @@ class Plotter(object):
         self.hists = []
     def add_hist(self, hist, label, plotstyle):
         self.hists.append((hist, label, plotstyle))
+    def clear(self):
+        plt.clf()
+        self.hists = [] 
     def plot(self, opts):
         plt.clf()
         for hist, label, plotstyle in self.hists:
@@ -90,6 +102,7 @@ class Plotter(object):
             plt.ylabel(opts['ylabel'])
         plt.legend(loc=0)
         if 'output' in opts:
+            print 'Creating',opts['output']
             plt.savefig(opts['output']+'.png',bbox_inches='tight',dpi=300)
             plt.savefig(opts['output']+'.pdf',bbox_inches='tight')
 

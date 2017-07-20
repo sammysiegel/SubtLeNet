@@ -25,11 +25,12 @@ def make_coll(fpath):
     coll.add_classes(['singletons', 'charged', 'inclusive', 'sv'], fpath) 
     return coll 
 
-top_4 = make_coll('/home/snarayan/hscratch/baconarrays/v4/RSGluonToTT_*_4_XXXX.npy') # T
-top_2 = make_coll('/home/snarayan/hscratch/baconarrays/v4/RSGluonToTT_*_2_XXXX.npy') # W
-qcd_0 = make_coll('/home/snarayan/hscratch/baconarrays/v4/QCD_*_0_XXXX.npy') # q/g
+top_4 = make_coll('/home/snarayan/hscratch/baconarrays/v6/RSGluonToTT_*_4_XXXX.npy') # T
+# top_2 = make_coll('/home/snarayan/hscratch/baconarrays/v4/RSGluonToTT_*_2_XXXX.npy') # W
+qcd_0 = make_coll('/home/snarayan/hscratch/baconarrays/v6/QCD_*_0_XXXX.npy') # q/g
 
-data = [top_4, top_2, qcd_0]
+data = [top_4, qcd_0]
+# data = [top_4, top_2, qcd_0]
 # data = [qcd_1, qcd_2, top_1, top_2, top_3]
 
 # preload some data just to get the dimensions
@@ -79,17 +80,22 @@ model.compile(optimizer=Adam(),
 
 print model.summary()
 
-train_generator = obj.generatePFSV(data, partition='train', batch=32)
+train_generator = obj.generatePFSV(data, partition='train', batch=100)
 validation_generator = obj.generatePFSV(data, partition='validate', batch=10000)
 
 # x, y, w = next(train_generator)
 # model.fit(x, y, sample_weight=w, epochs=1, batch_size=32, verbose=1)
 
-model.fit_generator(train_generator, 
-                    steps_per_epoch=100000, 
-                    epochs=1, 
-                    validation_data=validation_generator, 
-                    validation_steps=100)
+try:
+  model.fit_generator(train_generator, 
+                      steps_per_epoch=10000, 
+                      epochs=10, 
+                      validation_data=validation_generator, 
+                      validation_steps=100)
+except StopIteration:
+  pass
+
+model.save('model.h5')
 
 
 # model.fit(x['train'], y['train'], sample_weight=w['train'],

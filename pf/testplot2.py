@@ -16,17 +16,37 @@ def make_coll(fpath):
     coll.add_classes(['singletons', 'charged', 'inclusive', 'sv'], fpath) 
     return coll 
 
-top_4 = make_coll('/home/snarayan/hscratch/baconarrays/v4/RSGluonToTT_*_4_XXXX.npy') # T
-qcd_0 = make_coll('/home/snarayan/hscratch/baconarrays/v4/QCD_*_0_XXXX.npy') # q/g
+top_4 = make_coll('/home/snarayan/hscratch/baconarrays/v6/RSGluonToTT_*_4_XXXX.npy') # T
+qcd_0 = make_coll('/home/snarayan/hscratch/baconarrays/v6/QCD_*_0_XXXX.npy') # q/g
+# qcd_0 = make_coll('/home/snarayan/hscratch/baconarrays/v6/QCD_*_0_XXXX.npy') # q/g
 
-bins = np.arange(0,1.1,0.05)
-h_top = top_4.draw_singletons([('tau32', bins)])['tau32']
-h_qcd = qcd_0.draw_singletons([('tau32', bins)])['tau32']
 
-for h in [h_top, h_qcd]:
-    h.scale()
+bins = {}
+bins['tau32'] = np.arange(0,1.1,0.05)
+bins['pt'] = np.arange(200.,2000.,40)
+bins['msd'] = np.arange(0,400,10.)
 
-p = utils.Plotter()
-p.add_hist(h_top, 'top', 'r')
-p.add_hist(h_qcd, 'q/g', 'k')
-p.plot({'xlabel':r'$\tau_{32}$', 'ylabel':'Probability', 'output':'/home/snarayan/public_html/figs/test/tau32_b'})
+labels = {
+  'tau32' : r'$\tau_{32}$',
+  'pt' : r'$p_{T} [GeV]$',
+  'msd' : r'$m_{SD} [GeV]$',
+}
+
+def draw(partition='test'):
+  h_top = top_4.draw_singletons(bins.items(), partition=partition)
+  h_qcd = qcd_0.draw_singletons(bins.items(), partition=partition)
+
+  for h in [h_top, h_qcd]:
+      for v in h.values(): 
+        v.scale()
+
+  for k in bins:
+    p = utils.Plotter()
+    p.add_hist(h_top[k], 'top', 'r')
+    p.add_hist(h_qcd[k], 'q/g', 'k')
+    p.plot({'xlabel':labels[k], 'ylabel':'Probability', 'output':'/home/snarayan/public_html/figs/%s/'%partition+k})
+
+
+draw()
+draw('validate')
+draw('train')

@@ -58,27 +58,49 @@ class DataCollection(object):
         if not len(self.objects[name].inputs):
             print 'ERROR: class %s has no inputs'%name
         if DEBUG: print 'Found files                 '
-    def partition(self, train_frac=0.33, test_frac=0.33):
+    def partition(self, train_frac=0.5, test_frac=0.25):
         n_inputs = None 
         self.input_partitions = {'train':[], 'test':[], 'validate':[]} 
         for _,v in self.objects.iteritems():
             if n_inputs:
-                n_inputs = min(n_inputs, len(v.inputs))
+                assert(len(v.inputs) == n_inputs)
             else:
                 n_inputs = len(v.inputs)
         n_train = train_frac * n_inputs
         n_test = (train_frac + test_frac) * n_inputs
-        shuffler = range(n_inputs)
-        np.random.shuffle(shuffler)
-        for idx in xrange(n_inputs):
-            sidx = shuffler[idx]
-            if idx > n_test:
-                self.input_partitions['validate'].append(sidx)
-            elif idx > n_train:
-                self.input_partitions['test'].append(sidx)
-            else:
-                self.input_partitions['train'].append(sidx)
-        if DEBUG: print self.input_partitions['train']
+
+        # figure out the subsamples in our collection
+        pds = {}
+        sample_inputs = self.objects.values()[0].inputs  #just a random collection
+        for i,base_ in zip(xrange(len(sample_inputs)), sample_inputs):
+            base = sub('Output.*', '', base_)
+            if base not in pds:
+                pds[base] = []
+            pds[base].append(i)
+
+        for idxs in pds.values():
+            N = len(idxs)
+            n_train = int(train_frac * N)
+            n_test = int((train_frac + test_frac) * N)
+            self.input_partitions['train'].extend(idxs[:n_train])
+            self.input_partitions['test'].extend(idxs[n_train:n_test])
+            self.input_partitions['validate'].extend(idxs[n_test:])
+
+        # shuffler = range(n_inputs)
+        # np.random.shuffle(shuffler)
+        # for idx in xrange(n_inputs):
+        #     sidx = shuffler[idx]
+        #     if idx > n_test:
+        #         self.input_partitions['validate'].append(sidx)
+        #     elif idx > n_train:
+        #         self.input_partitions['test'].append(sidx)
+        #     else:
+        #         self.input_partitions['train'].append(sidx)
+        for k in self.input_partitions:
+            np.random.shuffle(self.input_partitions[k])
+        if DEBUG: 
+            print 'Training sample:'
+            print self.input_partitions['train']
         self.cached_input_partitions = {}
         for k,v in self.input_partitions.iteritems():
             self.cached_input_partitions[k] = v[:]
@@ -111,6 +133,7 @@ class PFSVCollection(DataCollection):
         super(PFSVCollection, self).__init__()
         self.pt_weight = None 
         self.fpath = None 
+        self.n_entries = 0
     def add_classes(self, names, fpath):
         '''
         fpath must be of the form /some/path/to/files_*_XXXX.npy, 
@@ -133,16 +156,18 @@ class PFSVCollection(DataCollection):
             self.objects[n] = DataObject(fs)
     def weight(self):
         if DEBUG: print 'Calculating weight...\r',
-        n_total = 0 
         self.pt_weight = NH1(
-            [0,40,80,120,160,200,250,300,350,400,450,500,600,700,800,1000,1200,1400,2000]
+            np.arange(200.,2000.,40)
+            # [0,40,80,120,160,200,250,300,350,400,450,500,600,700,800,1000,1200,1400,2000]
             )
         for o in self.objects['singletons'].inputs:
             self.pt_weight.add_from_file(sub('singletons', 'ptweight', o))
-        n_entries = int(self.pt_weight.integral())
+        self.n_entries = int(self.pt_weight.integral())
+        self.pt_weight.save('sum_weights.npy')
         self.pt_weight.invert()
+        self.pt_weight.save('inverted_weights.npy')
         if DEBUG: print 'Calculated weight         '
-        print 'Loaded a total of %i samples from %s' % (n_entries, self.fpath)
+        print 'Loaded a total of %i samples from %s' % (self.n_entries, self.fpath)
     def __getitem__(self, indices=None):
         data = super(PFSVCollection, self).__getitem__(indices)
         data['weight'] = self.pt_weight.eval_array(data['singletons'][:,singletons['pt']])
@@ -159,13 +184,16 @@ class PFSVCollection(DataCollection):
         #         5
         #     )
         return data 
-    def draw_singletons(self, vars, partition='test'):
+    def draw_singletons(self, vars, partition='test', weighted=True):
         if not self.pt_weight:
             self.weight()
         hists = {var:NH1(bins) for var,bins in vars}
         while self.load(partition=partition, repartition=False, components='singletons', memory=False):
             data = self.__getitem__()
-            weight = self.pt_weight.eval_array(data['singletons'][:,singletons['pt']])
+            if weighted:
+                weight = self.pt_weight.eval_array(data['singletons'][:,singletons['pt']])
+            else:
+                weight = None
             for var,_ in vars:
                 hists[var].fill_array(data['singletons'][:,singletons[var]], weight)
         return hists
@@ -191,8 +219,14 @@ class PFSVCollection(DataCollection):
                 yield i, o, w 
 
 def generatePFSV(collections, partition='train', batch=32):
+    for c in collections:
+        if not c.pt_weight:
+            c.weight()
+    entry_frac = 1./sum([x.n_entries for x in collections])
+    batches = {c : entry_frac * c.n_entries * batch for c in collections}
     small_batch = max(1, int(batch / len(collections)))
-    generators = {c:c.generator(partition=partition, batch=small_batch) for c in collections}
+    generators = {c:c.generator(partition=partition, batch=max(1, int(batches[c]))) 
+                    for c in collections}
     while True: 
         inputs = []
         outputs = []
