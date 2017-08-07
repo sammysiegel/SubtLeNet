@@ -207,6 +207,7 @@ class Roccer(object):
         ax.set_yticks([0.01,0.1,1])
         ax.set_yticklabels(['0.01','0.1','1'])
 
+        print 'Creating',opts['output']
         plt.savefig(opts['output']+'.png',bbox_inches='tight',dpi=300)
         plt.savefig(opts['output']+'.pdf',bbox_inches='tight')
 

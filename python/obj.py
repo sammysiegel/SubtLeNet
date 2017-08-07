@@ -230,6 +230,7 @@ class PFSVCollection(DataCollection):
                 stdout.flush()
                 if i_batches >= n_batches:
                     break
+        stdout.write('\n'); stdout.flush() # flush the screen
         self.refresh(partitions=[partition])
         return hists 
 

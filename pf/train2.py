@@ -95,7 +95,7 @@ try:
 except StopIteration:
   pass
 
-model.save('model.h5')
+model.save('model2.h5')
 
 
 # model.fit(x['train'], y['train'], sample_weight=w['train'],

@@ -13,11 +13,12 @@ obj.DEBUG = True
 
 def make_coll(fpath):
     coll = obj.PFSVCollection()
-    coll.add_classes(['singletons', 'charged', 'inclusive', 'sv'], fpath) 
+    coll.weight = 'ptweight'
+    coll.add_categories(['singletons', 'inclusive'], fpath) 
     return coll 
 
-top_4 = make_coll('/home/snarayan/hscratch/baconarrays/v6/RSGluonToTT_*_4_XXXX.npy') # T
-qcd_0 = make_coll('/home/snarayan/hscratch/baconarrays/v6/QCD_*_0_XXXX.npy') # q/g
+top_4 = make_coll('/home/snarayan/hscratch/baconarrays/v7_repro/PARTITION/RSGluonToTT_*_CATEGORY.npy') # T
+qcd_0 = make_coll('/home/snarayan/hscratch/baconarrays/v7_repro/PARTITION/QCD_*_CATEGORY.npy') # T
 # qcd_0 = make_coll('/home/snarayan/hscratch/baconarrays/v6/QCD_*_0_XXXX.npy') # q/g
 
 
@@ -44,12 +45,12 @@ def draw(partition='test'):
     p = utils.Plotter()
     p.add_hist(h_top[k], 'top', 'r')
     p.add_hist(h_qcd[k], 'q/g', 'k')
-    p.plot({'xlabel':labels[k], 'ylabel':'Probability', 'output':'/home/snarayan/public_html/figs/%s/'%partition+k})
+    p.plot({'xlabel':labels[k], 'ylabel':'Probability', 'output':'/home/snarayan/public_html/figs/testplots/%s/'%partition+k})
 
-  if partition=='test':  
-      r = utils.Roccer()
-      r.addROCs(h_top,h_qcd,labels,colors)
-      r.plotROCs({'output':'/home/snarayan/public_html/figs/%s/roc'%partition})      
+  # if partition=='test':  
+  #     r = utils.Roccer()
+  #     r.addROCs(h_top,h_qcd,labels,colors)
+  #     r.plotROCs({'output':'/home/snarayan/public_html/figs/%s/roc'%partition})      
 
 draw()
 draw('validate')
