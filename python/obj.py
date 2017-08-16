@@ -128,10 +128,13 @@ class PFSVCollection(DataCollection):
         self.weight = 'ptweight_scaled'
 
     def add_categories(self, categories, fpath):
+        '''load categories
+        
+        Arguments:
+            categories {[str]} -- list of categories to load
+            fpath {[str]} -- must be of the form /some/path/to/PARTITION/files_*_CATEGORY.npy, where CATEGORY gets replaced by the category and PARTITION by the partition
         '''
-        fpath must be of the form /some/path/to/PARTITION/files_*_CATEGORY.npy, 
-        where CATEGORY gets replaced by the category and PARTITION by the partition
-        '''
+
         names = categories + [self.weight]
         self.fpath = fpath 
         for part in _partitions:
@@ -151,6 +154,14 @@ class PFSVCollection(DataCollection):
                 self.objects[part][n] = DataObject(fs)
 
     def __getitem__(self, indices=None):
+        '''data access
+        
+        Keyword Arguments:
+            indices {int} -- index of data to slice, None will return entirety (default: {None})
+        
+        Returns:
+            numpy array of data 
+        '''
         data = super(PFSVCollection, self).__getitem__(indices)
         data['weight'] = data[self.weight]
         data['nP'] = np_utils.to_categorical(
@@ -161,13 +172,11 @@ class PFSVCollection(DataCollection):
                 data['singletons'][:,singletons['nB']].astype(np.int),
                 10
             )
-        # data['nC'] = np_utils.to_categorical(
-        #         data['singletons'][:,singletons['nC']].astype(np.int),
-        #         5
-        #     )
         return data 
 
     def draw_singletons(self, vars, partition='test', weighted=True):
+        '''DEPRECATED
+        '''
         hists = {var:NH1(bins) for var,bins in vars}
         while self.load(partition=partition, repartition=False, 
                         components=['singletons',self.weight], memory=True):
@@ -295,6 +304,36 @@ class PFSVCollection(DataCollection):
                 o = [x[lo:hi] for x in outputs]
                 w = weights[lo:hi]
                 yield i, o, w 
+
+
+def generateTest(collections, partition='train', batch=32, repartition=True):
+    small_batch = max(1, int(batch / len(collections)))
+    generators = {c:c.generic_generator(components=['singletons', c.weight],
+                                        partition=partition, 
+                                        batch=small_batch, 
+                                        repartition=repartition) 
+                    for c in collections}
+    input_indices = [singletons[x] for x in ['tau32','tau21']]
+    prongs_index = singletons['nProngs']
+    msd_index = singletons['msd']
+    while True: 
+        inputs = []
+        outputs = []
+        weights = []
+        for c in collections:
+            data = next(generators[c])
+            inputs.append([data['singletons'][:,input_indices]])
+            outputs.append([data['singletons'][prongs_index], data['singletons'][msd_index]])
+            weights.append([data[c.weight], data[c.weight]])
+        merged_inputs = []
+        for j in xrange(2):
+            merged_inputs.append(np.concatenate([v[j] for v in inputs], axis=0))
+        merged_outputs = []
+        for j in xrange(2):
+            merged_outputs.append(np.concatenate([v[j] for v in outputs], axis=0))
+        merged_weights = np.concatenate(weights, axis=0)
+        yield merged_inputs, merged_outputs, [merged_weights]*2
+
 
 
 def generatePF(collections, partition='train', batch=32, repartition=True, mask=False):
