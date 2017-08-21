@@ -1,4 +1,5 @@
 import numpy as np 
+import config
 from os.path import isfile 
 from os import environ
 environ['KERAS_BACKEND'] = 'tensorflow'
@@ -8,19 +9,13 @@ from re import sub
 from utils import *
 from sys import stdout
 
-DEBUG = False 
-
 _partitions = ['train', 'test', 'validate']
 
 _singletons = ['pt','eta','mass','msd','rho','tau32','tau21','flavour',
                'nbHadrons','nProngs','nResonanceProngs','resonanceType',
-               'nB','nC']
+               'nB','nC','partonPt','partonEta','partonPhi','partonM']
 singletons = {_singletons[x]:x for x in xrange(len(_singletons))}
 
-truth = 'nProngs'
-n_truth = 4
-
-weights_scale = None
 
 '''data format for training
 
@@ -43,8 +38,8 @@ class DataObject(object):
         if idx > 0:
             fpath = self.inputs[idx]
             if not dry:
-                if DEBUG: print 'Loading',fpath
-                self.data = np.load(fpath)
+                if config.DEBUG: print 'Loading',fpath
+                self.data = np.nan_to_num(np.load(fpath))
                 self.n_available = self.data.shape[0]
             else:
                 self.n_available = 0
@@ -56,8 +51,8 @@ class DataObject(object):
             for fpath in self.inputs:
                 if fpath not in self.loaded:
                     if not dry:
-                        if DEBUG: print 'Loading',fpath
-                        self.data = np.load(fpath)
+                        if config.DEBUG: print 'Loading',fpath
+                        self.data = np.nan_to_num(np.load(fpath))
                         self.n_available = self.data.shape[0]
                     else:
                         self.n_available = 0
@@ -87,12 +82,12 @@ class DataCollection(object):
         self._current_partition = None 
 
     def add_categories(self, names, fpath):
-        if DEBUG: print 'Searching for files...\r',
+        if config.DEBUG: print 'Searching for files...\r',
         for part in _partitions:
             self.objects[part][name] = DataObject(glob(fpath.replace('PARTITION', part)))
             if not len(self.objects[part][name].inputs):
                 print 'ERROR: class %s, partition %s has no inputs'%(name, part)
-        if DEBUG: print 'Found files                 '
+        if config.DEBUG: print 'Found files                 '
 
     def load(self, partition, idx=-1, repartition=True, memory=True, components=None):
         self._current_partition = partition 
@@ -108,6 +103,7 @@ class DataCollection(object):
             obj.load(idx=idx, memory=memory, dry=dry)
             # assert that all the loaded data has the same size
             assert(not(dry) or not(n_available) or obj.n_available==n_available)
+            n_available = obj.n_available
         return True 
 
     def __getitem__(self, indices=None):
@@ -165,8 +161,8 @@ class PFSVCollection(DataCollection):
         data = super(PFSVCollection, self).__getitem__(indices)
         data['weight'] = data[self.weight]
         data['nP'] = np_utils.to_categorical(
-                data['singletons'][:,singletons[truth]].astype(np.int),
-                n_truth
+                data['singletons'][:,singletons[config.truth]].astype(np.int),
+                config.n_truth
             )
         data['nB'] = np_utils.to_categorical(
                 data['singletons'][:,singletons['nB']].astype(np.int),
@@ -256,7 +252,7 @@ class PFSVCollection(DataCollection):
             for o in self.objects[p].values():
                 o.refresh()
 
-    def generic_generator(self, components=None, partition='test', batch=1000, repartition=False):
+    def generic_generator(self, components=None, partition='test', batch=10, repartition=False):
         # used as a generic generator for loading data
         while True:
             if not self.load(components=components, partition=partition, repartition=repartition):
@@ -306,16 +302,28 @@ class PFSVCollection(DataCollection):
                 yield i, o, w 
 
 
-def generateTest(collections, partition='train', batch=32, repartition=True):
+'''
+Custom generators for different kinds of data
+    -   generateTest: produces some singletons for adversarial training
+
+    -   generatePF: inclusive PF candidate arrays for learning nProngs
+    -   generatePFSV: as above, but with charged PFs and SVs added, for nP and nB
+'''
+
+def generateTest(collections, partition='train', batch=32, repartition=True, decorr_mass=True):
     small_batch = max(1, int(batch / len(collections)))
     generators = {c:c.generic_generator(components=['singletons', c.weight],
                                         partition=partition, 
                                         batch=small_batch, 
                                         repartition=repartition) 
                     for c in collections}
-    input_indices = [singletons[x] for x in ['tau32','tau21']]
-    prongs_index = singletons['nProngs']
+    input_indices = [singletons[x] for x in ['msd','tau32','tau21']]
+    prongs_index = singletons[config.truth]
     msd_index = singletons['msd']
+    def xform_mass(x):
+        binned = (np.minimum(x, config.max_mass) / config.max_mass * (config.n_mass_bins - 1)).astype(np.int)
+        onehot = np_utils.to_categorical(binned, config.n_mass_bins)
+        return onehot
     while True: 
         inputs = []
         outputs = []
@@ -323,49 +331,80 @@ def generateTest(collections, partition='train', batch=32, repartition=True):
         for c in collections:
             data = next(generators[c])
             inputs.append([data['singletons'][:,input_indices]])
-            outputs.append([data['singletons'][prongs_index], data['singletons'][msd_index]])
-            weights.append([data[c.weight], data[c.weight]])
+
+            nprongs = np_utils.to_categorical(data['singletons'][:,prongs_index], config.n_truth)
+            mass = xform_mass(data['singletons'][:,msd_index])
+            outputs.append([nprongs, mass])
+
+            # print nprongs.shape, mass.shape, data[c.weight].shape
+
+            weights.append([data[c.weight], 
+                            data[c.weight] * nprongs[:,1]]) # only unmask 1-prong QCD events
         merged_inputs = []
-        for j in xrange(2):
+        for j in xrange(1):
             merged_inputs.append(np.concatenate([v[j] for v in inputs], axis=0))
-        merged_outputs = []
-        for j in xrange(2):
+
+        merged_outputs = []; merged_weights = []
+        NOUTPUTS = 2 if decorr_mass else 1 
+        for j in xrange(NOUTPUTS):
             merged_outputs.append(np.concatenate([v[j] for v in outputs], axis=0))
-        merged_weights = np.concatenate(weights, axis=0)
-        yield merged_inputs, merged_outputs, [merged_weights]*2
+            merged_weights.append(np.concatenate([v[j] for v in weights], axis=0))
+        yield merged_inputs, merged_outputs, merged_weights
 
 
 
-def generatePF(collections, partition='train', batch=32, repartition=True, mask=False):
+def generatePF(collections, partition='train', batch=32, repartition=True, mask=False, decorr_mass=False):
     small_batch = max(1, int(batch / len(collections)))
-    generators = {c:c.generator(partition=partition, batch=small_batch, repartition=repartition, mask=mask) 
+    generators = {c:c.generic_generator(components=['singletons', 'inclusive', c.weight],
+                                        partition=partition, 
+                                        batch=small_batch, 
+                                        repartition=repartition) 
                     for c in collections}
+    prongs_index = singletons[config.truth]
+    msd_index = singletons['msd']
+    norm_factor = 1. / config.max_mass 
+    def xform_mass(x):
+        binned = (np.minimum(x, config.max_mass) * norm_factor * (config.n_mass_bins - 1)).astype(np.int)
+        onehot = np_utils.to_categorical(binned, config.n_mass_bins)
+        return onehot
     while True: 
         inputs = []
         outputs = []
         weights = []
         for c in collections:
-            i, o, w = next(generators[c])
-            inputs.append(i)
+            data = next(generators[c])
+            inputs.append([data['inclusive']])
+            
+            nprongs = np_utils.to_categorical(data['singletons'][:,prongs_index], config.n_truth)
+            o = [nprongs]
+            w = [data[c.weight]]
+
+            if decorr_mass:
+                mass = xform_mass(data['singletons'][:,msd_index])
+                o.append(mass)
+                w.append(w[0] * nprongs[:,1])
+
             outputs.append(o)
             weights.append(w)
+
         merged_inputs = []
         for j in xrange(1):
             merged_inputs.append(np.concatenate([v[j] for v in inputs], axis=0))
+
         merged_outputs = []
-        for j in xrange(2):
+        merged_weights = []
+        NOUTPUTS = 2 if decorr_mass else 1 
+        for j in xrange(NOUTPUTS):
             merged_outputs.append(np.concatenate([v[j] for v in outputs], axis=0))
-        merged_weights = np.concatenate(weights, axis=0)
-        if weights_scale is not None:
-            merged_weights *= np.dot(merged_outputs[0], weights_scale)
-        yield merged_inputs[0], merged_outputs[0], merged_weights
+            merged_weights.append(np.concatenate([v[j] for v in weights], axis=0))
+
+        if config.weights_scale is not None:
+            for j in xrange(NOUTPUTS):
+                merged_weights[j] *= np.dot(merged_outputs[0], config.weights_scale)
+        yield merged_inputs, merged_outputs, merged_weights
 
 
 def generatePFSV(collections, partition='train', batch=32):
-    # entry_frac = 1./sum([x.n_entries for x in collections])
-    # batches = {c : entry_frac * c.n_entries * batch for c in collections}
-    # generators = {c:c.generator(partition=partition, batch=max(1, int(batches[c]))) 
-    #                 for c in collections}
     small_batch = max(1, int(batch / len(collections)))
     generators = {c:c.generator(partition=partition, batch=small_batch) 
                     for c in collections}

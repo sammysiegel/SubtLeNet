@@ -18,15 +18,12 @@ from keras.callbacks import ModelCheckpoint, LambdaCallback, TensorBoard
 from keras.optimizers import Adam, SGD
 from keras.utils import np_utils
 import obj 
-obj.DEBUG = False
+import config
+config.DEBUG = False
 # obj.weights_scale = np.array([0, 1, 0, 0.5], dtype=np.float32)
 # obj.truth = 'resonanceType'
 # obj.n_truth = 5
 
-if obj.truth == 'resonanceType':
-    sig_truth = 4
-else:
-    sig_truth = 3
 
 from keras import backend as K
 K.set_image_data_format('channels_last')
@@ -37,8 +34,8 @@ def make_coll(fpath):
     coll.add_categories(['singletons', 'inclusive'], fpath) 
     return coll 
 
-top_4 = make_coll('/home/snarayan/hscratch/baconarrays/v8_repro/PARTITION/RSGluonToTT_3_*_CATEGORY.npy') # T
-qcd_0 = make_coll('/home/snarayan/hscratch/baconarrays/v8_repro/PARTITION/QCD_1_*_CATEGORY.npy') # T
+top_4 = make_coll('/home/snarayan/scratch5/baconarrays/v11_repro/PARTITION/ZprimeToTTJet_3_*_CATEGORY.npy') # T
+qcd_0 = make_coll('/home/snarayan/scratch5/baconarrays/v11_repro/PARTITION/QCD_1_*_CATEGORY.npy') # T
 
 data = [top_4, qcd_0]
 
@@ -62,7 +59,7 @@ norm = BatchNormalization(momentum=0.6,name='lstmdensenorm')(dense)
 for i in xrange(5):
     dense = Dense(50, activation='relu',name='dense%i'%i)(norm)
     norm = BatchNormalization(momentum=0.6,name='densenorm%i'%i)(dense)
-output_p = Dense(obj.n_truth, activation='softmax')(norm)
+output_p = Dense(config.n_truth, activation='softmax')(norm)
 
 
 # model = Model(inputs=[input_charged, input_inclusive, input_sv], outputs=[output_p, output_b])
@@ -73,9 +70,9 @@ model.compile(optimizer=Adam(lr=0.0005),
 
 print model.summary()
 
-train_generator = obj.generatePF(data, partition='train', batch=500, mask=True)
-validation_generator = obj.generatePF(data, partition='validate', batch=100, mask=True)
-test_generator = obj.generatePF(data, partition='validate', batch=1000, mask=True)
+train_generator = obj.generatePF(data, partition='train', batch=100, mask=False)
+validation_generator = obj.generatePF(data, partition='validate', batch=100, mask=False)
+test_generator = obj.generatePF(data, partition='validate', batch=1000, mask=False)
 test_i, test_o, test_w = next(test_generator)
 pred = model.predict(test_i)
 print test_o[:5]

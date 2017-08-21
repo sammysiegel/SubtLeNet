@@ -11,6 +11,7 @@ import utils
 from keras.models import Model, load_model 
 from keras.utils import np_utils
 import obj 
+import config
 # obj.DEBUG = True
 # obj.truth = 'resonanceType'
 # obj.n_truth = 5
@@ -30,13 +31,13 @@ def make_coll(fpath):
     coll.add_categories(['singletons', 'inclusive'], fpath) 
     return coll 
 
-top_4 = make_coll('/home/snarayan/hscratch/baconarrays/v8_repro/PARTITION/RSGluonToTT_3_*_CATEGORY.npy') # T
-qcd_0 = make_coll('/home/snarayan/hscratch/baconarrays/v8_repro/PARTITION/QCD_1_*_CATEGORY.npy') # T
+top_4 = make_coll('/home/snarayan/scratch5/baconarrays/v11_repro/PARTITION/ZprimeToTTJet_3_*_CATEGORY.npy') # T
+qcd_0 = make_coll('/home/snarayan/scratch5/baconarrays/v11_repro/PARTITION/QCD_1_*_CATEGORY.npy') # T
 
 
 # run DNN
 def predict(data):
-    return model.predict(data['inclusive'])[:,obj.n_truth-1]
+    return model.predict([data['inclusive']])[:,config.n_truth-1]
 
 f_vars = {
   'tau32' : (lambda x : x['singletons'][:,obj.singletons['tau32']], np.arange(0,1.2,0.01)),
@@ -45,7 +46,7 @@ f_vars = {
   'dnn'   : (predict, np.arange(0,1.2,0.01)),
 }
 
-OUTPUT = '/home/snarayan/public_html/figs/testplots/test_lstm/'
+OUTPUT = '/home/snarayan/public_html/figs/badnet/test_lstm/'
 system('mkdir -p '+OUTPUT)
 
 p = utils.Plotter()
@@ -53,10 +54,11 @@ r = utils.Roccer()
 
 # now mask the mass
 def mask(data):
-    lower = data['singletons'][:,obj.singletons['msd']] > 110
-    higher = data['singletons'][:,obj.singletons['msd']] < 210
-    pt = data['singletons'][:,obj.singletons['pt']] > 400 
-    return np.logical_and(pt, np.logical_and(lower,higher))
+    return predict(data) > 0.8   
+#     lower = data['singletons'][:,obj.singletons['msd']] > 110
+#     higher = data['singletons'][:,obj.singletons['msd']] < 210
+#     pt = data['singletons'][:,obj.singletons['pt']] > 400 
+#     return np.logical_and(pt, np.logical_and(lower,higher))
 
 hists_top = top_4.draw(components=['singletons', 'inclusive'],
                        f_vars=f_vars, f_mask=mask, n_batches=n_batches,
@@ -73,8 +75,9 @@ for k in hists_top:
     p.clear()
     p.add_hist(htop, '3-prong', 'r')
     p.add_hist(hqcd, '1-prong', 'k')
-    p.plot({'output':OUTPUT+'masked_'+k})
+    p.plot({'output':OUTPUT+'ddn_'+k})
 
+exit(1)
 r.clear()
 r.add_vars(hists_top,
            hists_qcd,

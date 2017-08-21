@@ -1,6 +1,7 @@
 import numpy as np 
 import tensorflow as tf
 from keras import backend as K 
+from keras.layers import Dense
 from keras.engine.topology import Layer
 
 # polynomial layer - currently unused
@@ -76,9 +77,8 @@ class Adversary(object):
         self._reverse = GradReverseLayer(self.scale)(inputs)
 
         self._dense1 = Dense(5, activation='tanh')(self._reverse)
-        self._dense2 = Dense(5, activation='tanh')(self._dense2)
+        self._dense2 = Dense(10, activation='tanh')(self._dense1)
 
         self._output = Dense(self.n_output_bins, activation='softmax')(self._dense2)
 
-    def get_output(self):
         return self._output
