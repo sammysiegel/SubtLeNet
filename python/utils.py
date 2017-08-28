@@ -4,6 +4,7 @@ from scipy.interpolate import interp1d
 
 import matplotlib as mpl
 mpl.use('cairo')
+import matplotlib.pylab as pl 
 from matplotlib import pyplot as plt
 import seaborn
 
@@ -152,11 +153,14 @@ p = Plotter()
 class Roccer(object):
     def __init__(self):
         self.cfgs = []
-    def add_vars(self, sig_hists, bkg_hists, labels, plotstyles):
+    def add_vars(self, sig_hists, bkg_hists, labels, plotstyles=None):
         try:
             for h in sig_hists:
                 try:
-                    self.cfgs.append((sig_hists[h], bkg_hists[h], labels[h], plotstyles[h]))
+                    if plotstyles is None:
+                        self.cfgs.append((sig_hists[h], bkg_hists[h], labels[h], None))
+                    else:
+                        self.cfgs.append((sig_hists[h], bkg_hists[h], labels[h], plotstyles[h]))
                 except KeyError:
                     pass # something wasn't provided - skip!
         except TypeError:#only one sig_hist was handed over - not iterable
@@ -171,7 +175,9 @@ class Roccer(object):
 
         min_value = 1
 
-        for sig_hist, bkg_hist, label, plotstyle in self.cfgs:
+        colors = pl.cm.tab10(np.linspace(0,1,len(self.cfgs)))
+
+        for i, (sig_hist, bkg_hist, label, plotstyle) in enumerate(self.cfgs):
             h_sig = sig_hist
             h_bkg = bkg_hist
             rmin = h_sig.bins[0]
@@ -196,8 +202,10 @@ class Roccer(object):
                 epsilons_bkg.append(ebkg)
                 if ebkg < min_value and ebkg > 0:
                     min_value = ebkg
-
-            plt.plot(epsilons_sig, epsilons_bkg, plotstyle,label=label,linewidth=2)
+            color = colors[i]
+            if plotstyle is not None:
+                color += plotstyle 
+            plt.plot(epsilons_sig, epsilons_bkg, color=color, label=label,linewidth=2)
 
         plt.axis([0,1,0.001,1])
         plt.yscale('log', nonposy='clip')

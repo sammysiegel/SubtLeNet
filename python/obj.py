@@ -19,12 +19,11 @@ singletons = {_singletons[x]:x for x in xrange(len(_singletons))}
 
 '''data format for training
 
-Implements an "file system" that allows for efficient caching of large datasets in small 
+Implements a "file system" that allows for efficient caching of large datasets in small 
 pieces, selective loading of columns, and on-the-fly analysis (e.g. reweighting, visualization, 
 etc). Note that this "file system" is read-only. Writing is treated separately, although 
-it ought to be on my TODO to integrate these. The data itself sits on disk, but the equivalent
-of the inode table is in memory. 
-things.
+it ought to be on my TODO to integrate these. The data itself sits on disk, but a datastore is
+built in memory when the dataset is accessed (only once).
 '''
 
 class DataObject(object):
@@ -170,10 +169,10 @@ class PFSVCollection(DataCollection):
             )
         return data 
 
-    def draw_singletons(self, vars, partition='test', weighted=True):
+    def draw_singletons(self, variables, partition='test', weighted=True):
         '''DEPRECATED
         '''
-        hists = {var:NH1(bins) for var,bins in vars}
+        hists = {var:NH1(bins) for var,bins in variables}
         while self.load(partition=partition, repartition=False, 
                         components=['singletons',self.weight], memory=True):
             data = self.__getitem__()
@@ -181,7 +180,7 @@ class PFSVCollection(DataCollection):
                 weight = data[self.weight]
             else:
                 weight = None
-            for var,_ in vars:
+            for var,_ in variables:
                 hists[var].fill_array(data['singletons'][:,singletons[var]], weight)
         return hists
 
@@ -252,13 +251,22 @@ class PFSVCollection(DataCollection):
             for o in self.objects[p].values():
                 o.refresh()
 
-    def generic_generator(self, components=None, partition='test', batch=10, repartition=False):
+    def generic_generator(self, components=None, partition='test', batch=10, repartition=False, normalize=False):
         # used as a generic generator for loading data
         while True:
             if not self.load(components=components, partition=partition, repartition=repartition):
                 raise StopIteration
             data = self.__getitem__()
+            sane = True 
+            for _,v in data.iteritems():
+                if np.isnan(np.sum(v)): # seems to be the fastest way
+                    sane = False
+            if not sane:
+                print 'ERROR - last loaded data was not sane!'
+                continue
             N = data[components[0]].shape[0]
+            if normalize and self.weight in components:
+                data[self.weight] /= batch # normalize the weight to the size of batches
             n_batches = int(N / batch + 1) 
             for ib in xrange(n_batches):
                 lo = ib * batch 
@@ -310,12 +318,13 @@ Custom generators for different kinds of data
     -   generatePFSV: as above, but with charged PFs and SVs added, for nP and nB
 '''
 
-def generateTest(collections, partition='train', batch=32, repartition=True, decorr_mass=True):
+def generateTest(collections, partition='train', batch=32, repartition=True, decorr_mass=True, normalize=False):
     small_batch = max(1, int(batch / len(collections)))
     generators = {c:c.generic_generator(components=['singletons', c.weight],
                                         partition=partition, 
                                         batch=small_batch, 
-                                        repartition=repartition) 
+                                        repartition=repartition,
+                                        normalize=normalize) 
                     for c in collections}
     input_indices = [singletons[x] for x in ['msd','tau32','tau21']]
     prongs_index = singletons[config.truth]
@@ -353,12 +362,59 @@ def generateTest(collections, partition='train', batch=32, repartition=True, dec
 
 
 
-def generatePF(collections, partition='train', batch=32, repartition=True, mask=False, decorr_mass=False):
+def generateSingletons(collections, variables, partition='train', batch=32, 
+                       repartition=True):
+    small_batch = max(1, int(batch / len(collections)))
+    generators = {c:c.generic_generator(components=['singletons', c.weight],
+                                        partition=partition, 
+                                        batch=small_batch, 
+                                        repartition=repartition,
+                                        normalize=False) 
+                    for c in collections}
+    prongs_index = singletons[config.truth]
+    var_idx = [singletons[x] for x in variables]
+    while True: 
+        inputs = []
+        outputs = []
+        weights = []
+        for c in collections:
+            data = next(generators[c])
+            inputs.append([data['singletons'][:,var_idx]])
+            # need to apply osme normalization to the inputs:
+            mus = np.array([0.5, 75])
+            sigmas = np.array([0.25, 50])
+            inputs[-1][0] -= mus 
+            inputs[-1][0] /= sigmas 
+            
+            nprongs = np_utils.to_categorical(data['singletons'][:,prongs_index], config.n_truth)
+            o = [nprongs]
+            w = [data[c.weight]]
+
+            outputs.append(o)
+            weights.append(w)
+
+        merged_inputs = []
+        for j in xrange(1):
+            merged_inputs.append(np.concatenate([v[j] for v in inputs], axis=0))
+
+        merged_outputs = []
+        merged_weights = []
+        NOUTPUTS = 1
+        for j in xrange(NOUTPUTS):
+            merged_outputs.append(np.concatenate([v[j] for v in outputs], axis=0))
+            merged_weights.append(np.concatenate([v[j] for v in weights], axis=0))
+
+        yield merged_inputs, merged_outputs, merged_weights
+
+
+def generatePF(collections, partition='train', batch=32, 
+               repartition=True, mask=False, decorr_mass=False, normalize=False):
     small_batch = max(1, int(batch / len(collections)))
     generators = {c:c.generic_generator(components=['singletons', 'inclusive', c.weight],
                                         partition=partition, 
                                         batch=small_batch, 
-                                        repartition=repartition) 
+                                        repartition=repartition,
+                                        normalize=normalize) 
                     for c in collections}
     prongs_index = singletons[config.truth]
     msd_index = singletons['msd']
@@ -373,7 +429,7 @@ def generatePF(collections, partition='train', batch=32, repartition=True, mask=
         weights = []
         for c in collections:
             data = next(generators[c])
-            inputs.append([data['inclusive']])
+            inputs.append([data['inclusive'][:,:10,:]])
             
             nprongs = np_utils.to_categorical(data['singletons'][:,prongs_index], config.n_truth)
             o = [nprongs]

@@ -110,7 +110,7 @@ try:
                       steps_per_epoch=5000, 
                       # steps_per_epoch=10, 
                       callbacks=[callback, tb],
-                      epochs=5, 
+                      epochs=1, 
                       validation_data=validation_generator, 
                       validation_steps=1000)
 except StopIteration:
