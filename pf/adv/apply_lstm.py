@@ -25,7 +25,7 @@ tau32msd = load_model('tau32msd.h5')
 regularized = load_model('regularized.h5')
 pivoter = load_model('pivoter.h5', custom_objects={'GradReverseLayer':adversarial.GradReverseLayer})
 
-n_batches = 100
+n_batches = 500
 partition = 'test'
 
 from keras import backend as K
@@ -60,7 +60,7 @@ def predict3(data, model):
 f_vars = {
   'tau32' : (lambda x : x['singletons'][:,obj.singletons['tau32']], np.arange(0,1.2,0.01)),
   'partonM' : (lambda x : x['singletons'][:,obj.singletons['partonM']], np.arange(0,400,5)),
-  'msd'   : (lambda x : x['singletons'][:,obj.singletons['msd']], np.arange(0.,400.,5.)),
+  'msd'   : (lambda x : x['singletons'][:,obj.singletons['msd']], np.arange(0.,400.,20.)),
   'pt'    : (lambda x : x['singletons'][:,obj.singletons['pt']], np.arange(250.,1000.,50.)),
   'shallow' : (lambda x : predict3(x, tau32msd), np.arange(0,1.2,0.01)),
   'classifier'   : (lambda x : predict(x, classifier), np.arange(0,1.2,0.01)),
@@ -100,10 +100,10 @@ r.add_vars(hists_top,
            )
 r.plot({'output':OUTPUT+'unmasked_roc'})
 
-exit(0)
+#exit(0)
 
 # get the cuts
-threshold = 0.95
+threshold = 0.98
 h = hists_qcd['classifier']
 classifier_cut = 0
 for ib in xrange(h.bins.shape[0]):

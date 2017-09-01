@@ -29,21 +29,22 @@ def make_coll(fpath):
     return coll 
 
 top = make_coll('/home/snarayan/scratch5/baconarrays/v11_repro/PARTITION/ZprimeToTTJet_3_*_CATEGORY.npy')
+higgs = make_coll('/data/t3serv014/bmaier/baconarrays/v1_repro//PARTITION/ZprimeToA0hToA0chichihbb_2_*_CATEGORY.npy')
 qcd = make_coll('/home/snarayan/scratch5/baconarrays/v11_repro/PARTITION/QCD_1_*_CATEGORY.npy') 
 
-data = [top, qcd]
+data = [top, higgs, qcd]
 
 # preload some data just to get the dimensions
 data[0].objects['train']['singletons'].load(memory=False)
 dims = data[0].objects['train']['singletons'].data.shape 
-dims = (None,2,)
+dims = (None,3,)
 
 '''
 first build the classifier!
 '''
 
 # set up data 
-variables = ['tau32', 'msd']
+variables = ['tau32', 'tau21', 'msd']
 classifier_train_gen = obj.generateSingletons(data, variables, partition='train', batch=100)
 classifier_validation_gen = obj.generateSingletons(data, variables, partition='validate', batch=100)
 classifier_test_gen = obj.generateSingletons(data, variables, partition='test', batch=1000)
@@ -66,7 +67,7 @@ print '###################################'
 
 
 # ctrl+C now triggers a graceful exit
-def save_classifier(name='tau32msd', model=classifier):
+def save_classifier(name='tauNmsd', model=classifier):
     model.save('%s.h5'%name)
 
 

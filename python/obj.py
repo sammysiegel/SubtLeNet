@@ -267,6 +267,8 @@ class PFSVCollection(DataCollection):
             N = data[components[0]].shape[0]
             if normalize and self.weight in components:
                 data[self.weight] /= batch # normalize the weight to the size of batches
+            else:
+                data[self.weight] /= 100 
             n_batches = int(N / batch + 1) 
             for ib in xrange(n_batches):
                 lo = ib * batch 
@@ -381,8 +383,8 @@ def generateSingletons(collections, variables, partition='train', batch=32,
             data = next(generators[c])
             inputs.append([data['singletons'][:,var_idx]])
             # need to apply osme normalization to the inputs:
-            mus = np.array([0.5, 75])
-            sigmas = np.array([0.25, 50])
+            mus = np.array([0.5, 0.5, 75])
+            sigmas = np.array([0.5, 0.5, 50])
             inputs[-1][0] -= mus 
             inputs[-1][0] /= sigmas 
             
@@ -429,7 +431,7 @@ def generatePF(collections, partition='train', batch=32,
         weights = []
         for c in collections:
             data = next(generators[c])
-            inputs.append([data['inclusive'][:,:10,:]])
+            inputs.append([data['inclusive'][:,:20,:]])
             
             nprongs = np_utils.to_categorical(data['singletons'][:,prongs_index], config.n_truth)
             o = [nprongs]

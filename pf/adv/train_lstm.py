@@ -19,7 +19,7 @@ K.set_image_data_format('channels_last')
 from adversarial import Adversary
 import obj 
 import config 
-config.DEBUG = False
+config.DEBUG = True
 
 ''' 
 instantiate data loaders 
@@ -31,14 +31,15 @@ def make_coll(fpath):
     return coll 
 
 top = make_coll('/home/snarayan/scratch5/baconarrays/v11_repro/PARTITION/ZprimeToTTJet_3_*_CATEGORY.npy')
+higgs = make_coll('/data/t3serv014/bmaier/baconarrays/v1_repro//PARTITION/ZprimeToA0hToA0chichihbb_2_*_CATEGORY.npy')
 qcd = make_coll('/home/snarayan/scratch5/baconarrays/v11_repro/PARTITION/QCD_1_*_CATEGORY.npy') 
 
-data = [top, qcd]
+data = [top, higgs, qcd]
 
 # preload some data just to get the dimensions
 data[0].objects['train']['inclusive'].load(memory=False)
 dims = data[0].objects['train']['inclusive'].data.shape 
-dims = (None, 10, 9) # override
+dims = (None, 20, 9) # override
 
 ''' 
 some global definitions
@@ -61,7 +62,7 @@ first build the classifier!
 '''
 
 # set up data 
-classifier_train_gen = obj.generatePF(data, partition='train', batch=100, normalize=True)
+classifier_train_gen = obj.generatePF(data, partition='train', batch=100, normalize=False)
 classifier_validation_gen = obj.generatePF(data, partition='validate', batch=100)
 classifier_test_gen = obj.generatePF(data, partition='validate', batch=1000)
 test_i, test_o, test_w = next(classifier_test_gen)
@@ -106,18 +107,18 @@ now build the adversarial setup
 '''
 
 # set up data 
-train_gen = obj.generatePF(data, partition='train', batch=100, decorr_mass=True, normalize=True)
+train_gen = obj.generatePF(data, partition='train', batch=100, decorr_mass=True, normalize=False)
 validation_gen = obj.generatePF(data, partition='validate', batch=100, decorr_mass=True)
 test_gen = obj.generatePF(data, partition='validate', batch=1000, decorr_mass=True)
 
 # build the model 
-mass_hat = Adversary(config.n_mass_bins, scale=0.001)(y_hat)
+mass_hat = Adversary(config.n_mass_bins, scale=0.01)(y_hat)
 
 pivoter = Model(inputs=[inputs],
                 outputs=[y_hat, mass_hat])
 pivoter.compile(optimizer=Adam(lr=0.001, clipnorm=1., clipvalue=0.5),
                 loss=['categorical_crossentropy', 'categorical_crossentropy'],
-                loss_weights=[1,1000])
+                loss_weights=[0.1,10])
 
 print '############# PIVOTER #############'
 pivoter.summary()
@@ -130,17 +131,24 @@ Now we train both models
 # bit of pre-training to get the classifer in the right place 
 classifier.fit_generator(classifier_train_gen, 
                          steps_per_epoch=5000, 
-                         epochs=3,
+                         epochs=5,
                          validation_data=classifier_validation_gen,
                          validation_steps=1000)
 
 
 save_classifier(name='pretrained')
 
+
+def save_and_exit(signal=None, frame=None, name='regularized', model=classifier):
+    save_classifier(name, model)
+    flog.close()
+    exit(1)
+signal.signal(signal.SIGINT, save_and_exit)
+
 # now train the model for real
 pivoter.fit_generator(train_gen, 
                       steps_per_epoch=5000,
-                      epochs=3,
+                      epochs=8,
                       callbacks=[callback, tb],
                       validation_data=validation_gen,
                       validation_steps=100)
