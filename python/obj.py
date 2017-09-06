@@ -74,19 +74,47 @@ class DataObject(object):
             return self.data 
 
 
-class DataCollection(object):
+class _DataCollection(object):
     def __init__(self):
         self.objects = {part:{} for part in _partitions}
         self.cached_objects = {}
         self._current_partition = None 
+        self.weight = 'ptweight_scaled'
+        self.fpath = None
 
-    def add_categories(self, names, fpath):
-        if config.DEBUG: print 'Searching for files...\r',
+    # def add_categories(self, names, fpath):
+    #     if config.DEBUG: print 'Searching for files...\r',
+    #     for part in _partitions:
+    #         self.objects[part][name] = DataObject(glob(fpath.replace('PARTITION', part)))
+    #         if not len(self.objects[part][name].inputs):
+    #             print 'ERROR: class %s, partition %s has no inputs'%(name, part)
+    #     if config.DEBUG: print 'Found files                 '
+
+    def add_categories(self, categories, fpath):
+        '''load categories
+        
+        Arguments:
+            categories {[str]} -- list of categories to load
+            fpath {[str]} -- must be of the form /some/path/to/PARTITION/files_*_CATEGORY.npy, where CATEGORY gets replaced by the category and PARTITION by the partition
+        '''
+
+        names = categories + [self.weight]
+        self.fpath = fpath 
         for part in _partitions:
-            self.objects[part][name] = DataObject(glob(fpath.replace('PARTITION', part)))
-            if not len(self.objects[part][name].inputs):
-                print 'ERROR: class %s, partition %s has no inputs'%(name, part)
-        if config.DEBUG: print 'Found files                 '
+            basefiles = glob(fpath.replace('CATEGORY',names[0]).replace('PARTITION',part))
+            to_add = {n:[] for n in names}
+            for f in basefiles:
+                missing = False 
+                for n in names:
+                    if not isfile(f.replace(names[0], n)):
+                        missing = True 
+                        break 
+                if missing:
+                    continue 
+                for n in names:
+                    to_add[n].append(f.replace(names[0], n))
+            for n,fs in to_add.iteritems():
+                self.objects[part][n] = DataObject(fs)
 
     def load(self, partition, idx=-1, repartition=True, memory=True, components=None):
         self._current_partition = partition 
@@ -108,81 +136,10 @@ class DataCollection(object):
     def __getitem__(self, indices=None):
         data = {}
         if not self._current_partition:
-            print 'DataCollection[]: load must be called before requesting data'
+            print '_DataCollection.__getitem__: load must be called before requesting data'
         for k,v in self.objects[self._current_partition].iteritems():
             data[k] = v[indices]
         return data 
-
-
-class PFSVCollection(DataCollection):
-    def __init__(self):
-        super(PFSVCollection, self).__init__()
-        self.pt_weight = None 
-        self.fpath = None 
-        self.n_entries = 0
-        self.weight = 'ptweight_scaled'
-
-    def add_categories(self, categories, fpath):
-        '''load categories
-        
-        Arguments:
-            categories {[str]} -- list of categories to load
-            fpath {[str]} -- must be of the form /some/path/to/PARTITION/files_*_CATEGORY.npy, where CATEGORY gets replaced by the category and PARTITION by the partition
-        '''
-
-        names = categories + [self.weight]
-        self.fpath = fpath 
-        for part in _partitions:
-            basefiles = glob(fpath.replace('CATEGORY','singletons').replace('PARTITION',part))
-            to_add = {n:[] for n in names}
-            for f in basefiles:
-                missing = False 
-                for n in names:
-                    if not isfile(f.replace('singletons', n)):
-                        missing = True 
-                        break 
-                if missing:
-                    continue 
-                for n in names:
-                    to_add[n].append(f.replace('singletons', n))
-            for n,fs in to_add.iteritems():
-                self.objects[part][n] = DataObject(fs)
-
-    def __getitem__(self, indices=None):
-        '''data access
-        
-        Keyword Arguments:
-            indices {int} -- index of data to slice, None will return entirety (default: {None})
-        
-        Returns:
-            numpy array of data 
-        '''
-        data = super(PFSVCollection, self).__getitem__(indices)
-        data['weight'] = data[self.weight]
-        data['nP'] = np_utils.to_categorical(
-                data['singletons'][:,singletons[config.truth]].astype(np.int),
-                config.n_truth
-            )
-        data['nB'] = np_utils.to_categorical(
-                data['singletons'][:,singletons['nB']].astype(np.int),
-                10
-            )
-        return data 
-
-    def draw_singletons(self, variables, partition='test', weighted=True):
-        '''DEPRECATED
-        '''
-        hists = {var:NH1(bins) for var,bins in variables}
-        while self.load(partition=partition, repartition=False, 
-                        components=['singletons',self.weight], memory=True):
-            data = self.__getitem__()
-            if weighted:
-                weight = data[self.weight]
-            else:
-                weight = None
-            for var,_ in variables:
-                hists[var].fill_array(data['singletons'][:,singletons[var]], weight)
-        return hists
 
     def draw(self, components, f_vars, f_mask=None, weighted=True, partition='test', n_batches=None):
         '''draw generic stuff
@@ -199,7 +156,7 @@ class PFSVCollection(DataCollection):
         '''
         hists = {var:NH1(x[1]) for var,x in f_vars.iteritems()}
         i_batches = 0 
-        gen = self.generic_generator(components+[self.weight], partition, batch=1000)
+        gen = self.generator(components+[self.weight], partition, batch=1000)
         while True:
             try:
                 data = next(gen)
@@ -251,7 +208,7 @@ class PFSVCollection(DataCollection):
             for o in self.objects[p].values():
                 o.refresh()
 
-    def generic_generator(self, components=None, partition='test', batch=10, repartition=False, normalize=False):
+    def generator(self, components=None, partition='test', batch=10, repartition=False, normalize=False):
         # used as a generic generator for loading data
         while True:
             if not self.load(components=components, partition=partition, repartition=repartition):
@@ -276,8 +233,42 @@ class PFSVCollection(DataCollection):
                 to_yield = {k:v[lo:hi] for k,v in data.iteritems()}
                 yield to_yield 
 
+
+# why is this even a separate class? abstracted everything away
+class GenCollection(_DataCollection):
+    def __init__(self):
+        super(GenCollection, self).__init__()
+
+
+
+class PFSVCollection(_DataCollection):
+    def __init__(self):
+        super(PFSVCollection, self).__init__()
+
+    def __getitem__(self, indices=None):
+        '''data access
+        
+        Keyword Arguments:
+            indices {int} -- index of data to slice, None will return entirety (default: {None})
+        
+        Returns:
+            numpy array of data 
+        '''
+        data = super(PFSVCollection, self).__getitem__(indices)
+        data['weight'] = data[self.weight]
+        data['nP'] = np_utils.to_categorical(
+                data['singletons'][:,singletons[config.truth]].astype(np.int),
+                config.n_truth
+            )
+        data['nB'] = np_utils.to_categorical(
+                data['singletons'][:,singletons['nB']].astype(np.int),
+                10
+            )
+        return data 
+
     def generator(self, partition='train', batch=5, repartition=False, mask=False):
         # used as a generator for training data
+        # almost totally deprecated
         while True:
             if not self.load(partition=partition, repartition=repartition):
                 raise StopIteration
@@ -315,14 +306,14 @@ class PFSVCollection(DataCollection):
 '''
 Custom generators for different kinds of data
     -   generateTest: produces some singletons for adversarial training
-
+    -   generateSingletons: to train on msd, tau32, tau21
     -   generatePF: inclusive PF candidate arrays for learning nProngs
     -   generatePFSV: as above, but with charged PFs and SVs added, for nP and nB
 '''
 
 def generateTest(collections, partition='train', batch=32, repartition=True, decorr_mass=True, normalize=False):
     small_batch = max(1, int(batch / len(collections)))
-    generators = {c:c.generic_generator(components=['singletons', c.weight],
+    generators = {c:c.generator(components=['singletons', c.weight],
                                         partition=partition, 
                                         batch=small_batch, 
                                         repartition=repartition,
@@ -367,7 +358,7 @@ def generateTest(collections, partition='train', batch=32, repartition=True, dec
 def generateSingletons(collections, variables, partition='train', batch=32, 
                        repartition=True):
     small_batch = max(1, int(batch / len(collections)))
-    generators = {c:c.generic_generator(components=['singletons', c.weight],
+    generators = {c:c.generator(components=['singletons', c.weight],
                                         partition=partition, 
                                         batch=small_batch, 
                                         repartition=repartition,
@@ -412,7 +403,7 @@ def generateSingletons(collections, variables, partition='train', batch=32,
 def generatePF(collections, partition='train', batch=32, 
                repartition=True, mask=False, decorr_mass=False, normalize=False):
     small_batch = max(1, int(batch / len(collections)))
-    generators = {c:c.generic_generator(components=['singletons', 'inclusive', c.weight],
+    generators = {c:c.generator(components=['singletons', 'inclusive', c.weight],
                                         partition=partition, 
                                         batch=small_batch, 
                                         repartition=repartition,
@@ -464,7 +455,7 @@ def generatePF(collections, partition='train', batch=32,
 
 def generatePFSV(collections, partition='train', batch=32):
     small_batch = max(1, int(batch / len(collections)))
-    generators = {c:c.generator(partition=partition, batch=small_batch) 
+    generators = {c:c.old_generator(partition=partition, batch=small_batch) 
                     for c in collections}
     while True: 
         inputs = []
