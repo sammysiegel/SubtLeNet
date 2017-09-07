@@ -16,6 +16,12 @@ _singletons = ['pt','eta','mass','msd','rho','tau32','tau21','flavour',
                'nB','nC','partonPt','partonEta','partonPhi','partonM']
 singletons = {_singletons[x]:x for x in xrange(len(_singletons))}
 
+_gen_singletons = ['pt', 'eta', 'mass', 't21', 't32', 
+                   'msd', 't21sd', 't32sd',
+                   'parton_mass', 'parton_t21', 'parton_t32']
+gen_singletons = {_gen_singletons[x]:x for x in xrange(len(_gen_singletons))}
+
+
 
 '''data format for training
 
@@ -129,7 +135,7 @@ class _DataCollection(object):
                     return False 
             obj.load(idx=idx, memory=memory, dry=dry)
             # assert that all the loaded data has the same size
-            assert(not(dry) or not(n_available) or obj.n_available==n_available)
+            assert(not(dry) or (n_available is None) or obj.n_available==n_available)
             n_available = obj.n_available
         return True 
 
@@ -177,7 +183,7 @@ class _DataCollection(object):
                         x = x.flatten() # in case it has more than one dimension
                     try:
                         assert(w.shape == x.shape)
-                    except AssertionError as e :
+                    except AssertionError as e:
                         print w.shape, x.shape 
                         raise e
                     h.fill_array(x, weights=w)
@@ -266,7 +272,7 @@ class PFSVCollection(_DataCollection):
             )
         return data 
 
-    def generator(self, partition='train', batch=5, repartition=False, mask=False):
+    def old_generator(self, partition='train', batch=5, repartition=False, mask=False):
         # used as a generator for training data
         # almost totally deprecated
         while True:
