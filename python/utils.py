@@ -155,7 +155,7 @@ class Roccer(object):
         self.cfgs = []
     def add_vars(self, sig_hists, bkg_hists, labels, plotstyles=None):
         try:
-            for h in sig_hists:
+            for h in sorted(sig_hists):
                 try:
                     if plotstyles is None:
                         self.cfgs.append((sig_hists[h], bkg_hists[h], labels[h], None))
@@ -167,7 +167,7 @@ class Roccer(object):
             self.cfgs.append((sig_hists,bkg_hists,labels,plotstyles))
     def clear(self):
         self.cfgs = []
-    def plot(self, opts, nbins = 100):
+    def plot(self, opts):
         fig, ax = plt.subplots(1)
         ax.get_xaxis().set_tick_params(which='both',direction='in')
         ax.get_yaxis().set_tick_params(which='both',direction='in')
@@ -191,6 +191,7 @@ class Roccer(object):
             total_sig = h_sig.integral()
             total_bkg = h_bkg.integral()
 
+            nbins = h_sig.bins.shape[0]
             for ib in xrange(nbins+1):
                 if inverted:
                     esig = h_sig.integral(hi=ib) / total_sig
@@ -207,13 +208,13 @@ class Roccer(object):
                 color += plotstyle 
             plt.plot(epsilons_sig, epsilons_bkg, color=color, label=label,linewidth=2)
 
-        plt.axis([0,1,0.001,1])
+        plt.axis([0,1,0.0001,1])
         plt.yscale('log', nonposy='clip')
         plt.legend(loc=4, fontsize=22)
         plt.ylabel('Background fake rate', fontsize=24)
         plt.xlabel('Signal efficiency', fontsize=24)
-        ax.set_yticks([0.01,0.1,1])
-        ax.set_yticklabels(['0.01','0.1','1'])
+        ax.set_yticks([0.001, 0.01,0.1,1])
+        ax.set_yticklabels(['0.001','0.01','0.1','1'])
 
         print 'Creating',opts['output']
         plt.savefig(opts['output']+'.png',bbox_inches='tight',dpi=300)

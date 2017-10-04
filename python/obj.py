@@ -7,7 +7,8 @@ from glob import glob
 from keras.utils import np_utils
 from re import sub 
 from utils import *
-from sys import stdout
+from sys import stdout, stderr
+from math import floor
 
 _partitions = ['train', 'test', 'validate']
 
@@ -20,6 +21,8 @@ _gen_singletons = ['pt', 'eta', 'mass', 't21', 't32',
                    'msd', 't21sd', 't32sd',
                    'parton_mass', 'parton_t21', 'parton_t32']
 gen_singletons = {_gen_singletons[x]:x for x in xrange(len(_gen_singletons))}
+
+limit = None
 
 
 
@@ -38,12 +41,14 @@ class DataObject(object):
         self.loaded = set([])
         self.n_available = 0 
         self.data = None 
+        self.last_loaded = None 
 
     def load(self, idx=-1, memory=True, dry=False):
         if idx > 0:
             fpath = self.inputs[idx]
             if not dry:
-                if config.DEBUG: print 'Loading',fpath
+                if config.DEBUG: stderr.write('Loading %s\n'%fpath)
+                stderr.flush()
                 self.data = np.nan_to_num(np.load(fpath))
                 self.n_available = self.data.shape[0]
             else:
@@ -51,12 +56,14 @@ class DataObject(object):
                 self.data = None
             if memory:
                 self.loaded.add(fpath)
+            self.last_loaded = fpath 
             return 
         else:
             for fpath in self.inputs:
                 if fpath not in self.loaded:
                     if not dry:
-                        if config.DEBUG: print 'Loading',fpath
+                        if config.DEBUG: stderr.write('Loading %s\n'%fpath)
+                        stderr.flush()
                         self.data = np.nan_to_num(np.load(fpath))
                         self.n_available = self.data.shape[0]
                     else:
@@ -64,6 +71,7 @@ class DataObject(object):
                         self.data = None
                     if memory:
                         self.loaded.add(fpath)
+                    self.last_loaded = fpath 
                     return 
         print 'DataObject.load did not load anything!'
 
@@ -83,18 +91,9 @@ class DataObject(object):
 class _DataCollection(object):
     def __init__(self):
         self.objects = {part:{} for part in _partitions}
-        self.cached_objects = {}
         self._current_partition = None 
         self.weight = 'ptweight_scaled'
         self.fpath = None
-
-    # def add_categories(self, names, fpath):
-    #     if config.DEBUG: print 'Searching for files...\r',
-    #     for part in _partitions:
-    #         self.objects[part][name] = DataObject(glob(fpath.replace('PARTITION', part)))
-    #         if not len(self.objects[part][name].inputs):
-    #             print 'ERROR: class %s, partition %s has no inputs'%(name, part)
-    #     if config.DEBUG: print 'Found files                 '
 
     def add_categories(self, categories, fpath):
         '''load categories
@@ -134,8 +133,9 @@ class _DataCollection(object):
                 else:
                     return False 
             obj.load(idx=idx, memory=memory, dry=dry)
+            # print obj.last_loaded, obj.n_available, (n_available is None)
             # assert that all the loaded data has the same size
-            assert(not(dry) or (n_available is None) or obj.n_available==n_available)
+            assert(not(dry) or (n_available is None) or (obj.n_available==n_available))
             n_available = obj.n_available
         return True 
 
@@ -162,7 +162,7 @@ class _DataCollection(object):
         '''
         hists = {var:NH1(x[1]) for var,x in f_vars.iteritems()}
         i_batches = 0 
-        gen = self.generator(components+[self.weight], partition, batch=1000)
+        gen = self.generator(components+[self.weight], partition, batch=10000)
         while True:
             try:
                 data = next(gen)
@@ -181,11 +181,7 @@ class _DataCollection(object):
                     if len(x.shape) > 1:
                         w = np.array([w for _ in x.shape[1]]).flatten()
                         x = x.flatten() # in case it has more than one dimension
-                    try:
-                        assert(w.shape == x.shape)
-                    except AssertionError as e:
-                        print w.shape, x.shape 
-                        raise e
+                    assert w.shape == x.shape, 'Shapes are not aligned %s %s'%(str(w.shape), str(x.shape))
                     h.fill_array(x, weights=w)
 
             except StopIteration:
@@ -193,13 +189,27 @@ class _DataCollection(object):
             if n_batches:
                 i_batches += 1 
                 completed = int(i_batches*20/n_batches)
-                stdout.write('[%s%s]\r'%('#'*completed, ' '*(20-completed)))
+                stdout.write('[%s%s] %s\r'%('#'*completed, ' '*(20-completed), self.fpath))
                 stdout.flush()
                 if i_batches >= n_batches:
                     break
         stdout.write('\n'); stdout.flush() # flush the screen
         self.refresh(partitions=[partition])
         return hists 
+
+    def infer(self, components, f, name, partition='test'):
+        gen = self.generator(components+[self.weight], partition, batch=None)
+        counter = 0 
+        while True:
+            try:
+                stdout.write('%i\r'%counter); stdout.flush(); counter += 1 
+                data = next(gen)
+                inference = f(data)
+                out_name = self.objects[partition]['singletons'].last_loaded.replace('singletons', name)
+                np.save(out_name, inference)
+
+            except StopIteration:
+                break 
 
     def refresh(self, partitions=None):
         '''refresh
@@ -228,16 +238,19 @@ class _DataCollection(object):
                 print 'ERROR - last loaded data was not sane!'
                 continue
             N = data[components[0]].shape[0]
-            if normalize and self.weight in components:
+            if normalize and self.weight in components and batch:
                 data[self.weight] /= batch # normalize the weight to the size of batches
             else:
                 data[self.weight] /= 100 
-            n_batches = int(N / batch + 1) 
-            for ib in xrange(n_batches):
-                lo = ib * batch 
-                hi = min(N, (ib + 1) * batch)
-                to_yield = {k:v[lo:hi] for k,v in data.iteritems()}
-                yield to_yield 
+            if batch:
+                n_batches = int(floor(N * 1. / batch + 0.5))
+                for ib in xrange(n_batches):
+                    lo = ib * batch 
+                    hi = min(N, (ib + 1) * batch)
+                    to_yield = {k:v[lo:hi] for k,v in data.iteritems()}
+                    yield to_yield 
+            else:
+                yield data 
 
 
 # why is this even a separate class? abstracted everything away
@@ -428,7 +441,10 @@ def generatePF(collections, partition='train', batch=32,
         weights = []
         for c in collections:
             data = next(generators[c])
-            inputs.append([data['inclusive'][:,:20,:]])
+            if limit:
+                inputs.append([data['inclusive'][:,:limit,:]])
+            else:
+                inputs.append([data['inclusive']])
             
             nprongs = np_utils.to_categorical(data['singletons'][:,prongs_index], config.n_truth)
             o = [nprongs]
@@ -437,7 +453,7 @@ def generatePF(collections, partition='train', batch=32,
             if decorr_mass:
                 mass = xform_mass(data['singletons'][:,msd_index])
                 o.append(mass)
-                w.append(w[0] * nprongs[:,1])
+                w.append(w[0] * nprongs[:,config.adversary_mask])
 
             outputs.append(o)
             weights.append(w)

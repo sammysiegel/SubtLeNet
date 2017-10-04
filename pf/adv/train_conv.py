@@ -8,24 +8,22 @@ import numpy as np
 import utils
 import signal
 
-from keras.layers import Input, Dense, Dropout, concatenate, LSTM, BatchNormalization
+from keras.layers import Input, Dense, Dropout, concatenate, LSTM, BatchNormalization, Convolution1D, MaxPooling1D, Flatten, Conv1D
 from keras.models import Model 
 from keras.callbacks import ModelCheckpoint, LambdaCallback, TensorBoard
 from keras.optimizers import Adam, SGD
 from keras.utils import np_utils
 from keras import backend as K
-K.set_image_data_format('channels_last')
+K.set_image_data_format('channels_first')
 
 from adversarial import Adversary
+from conv1d import Conv1DTranspose
 import obj 
 import config 
-#config.DEBUG = True
+# config.DEBUG = True
 config.n_truth = 5
 config.truth = 'resonanceType'
-config.adversary_mask = 0
-ADV = 1
-
-NEPOCH = 1
+ADV = False 
 
 ''' 
 instantiate data loaders 
@@ -36,10 +34,8 @@ def make_coll(fpath):
     coll.add_categories(['singletons', 'inclusive'], fpath) 
     return coll 
 
-top = make_coll('/fastscratch/snarayan/baconarrays/v12_repro/PARTITION/ZprimeToTTJet_4_*_CATEGORY.npy')
-qcd = make_coll('/fastscratch/snarayan/baconarrays/v12_repro/PARTITION/QCD_0_*_CATEGORY.npy') 
-#top = make_coll('testdata/PARTITION/ZprimeToTTJet_4_*_CATEGORY.npy')
-#qcd = make_coll('testdata/PARTITION/QCD_0_*_CATEGORY.npy') 
+top = make_coll('/home/snarayan/scratch5/baconarrays/v12_repro/PARTITION/ZprimeToTTJet_4_*_CATEGORY.npy')
+qcd = make_coll('/home/snarayan/scratch5/baconarrays/v12_repro/PARTITION/QCD_0_*_CATEGORY.npy') 
 
 data = [top, qcd]
 
@@ -65,6 +61,13 @@ test_i, test_o, test_w = next(classifier_test_gen)
 
 inputs  = Input(shape=(dims[1], dims[2]), name='input')
 norm    = BatchNormalization(momentum=0.6, name='input_bnorm')                              (inputs)
+
+conv = Conv1D(32, 2, activation='relu', name='conv0', kernel_initializer='lecun_uniform', padding='same')(norm)
+norm    = BatchNormalization(momentum=0.6, name='conv0_bnorm')                              (conv)
+
+conv = Conv1D(16, 2, activation='relu', name='conv1', kernel_initializer='lecun_uniform', padding='same')(norm)
+norm    = BatchNormalization(momentum=0.6, name='conv1_bnorm')                              (conv)
+
 lstm    = LSTM(100, go_backwards=True, implementation=2, name='lstm')                       (norm)
 norm    = BatchNormalization(momentum=0.6, name='lstm_norm')                                (lstm)
 dense   = Dense(100, activation='relu',name='lstmdense',kernel_initializer='lecun_uniform') (norm)
@@ -77,20 +80,20 @@ norm = BatchNormalization(momentum=0.6,name='dense5_norm')(dense)
 y_hat   = Dense(config.n_truth, activation='softmax')                                       (norm)
 
 classifier = Model(inputs=inputs, outputs=y_hat)
-classifier.compile(optimizer=Adam(lr=0.001),
+classifier.compile(optimizer=Adam(lr=0.0005),
                    loss='categorical_crossentropy',
                    metrics=['accuracy'])
 
-# print '########### CLASSIFIER ############'
-# classifier.summary()
-# print '###################################'
+print '########### CLASSIFIER ############'
+classifier.summary()
+print '###################################'
 
 pred = classifier.predict(test_i)
 
 
 # ctrl+C now triggers a graceful exit
 def save_classifier(name='classifier', model=classifier):
-    model.save('models/%s.h5'%name)
+    model.save('%s.h5'%name)
 
 def save_and_exit(signal=None, frame=None, name='classifier', model=classifier):
     save_classifier(name, model)
@@ -110,15 +113,15 @@ validation_gen = obj.generatePF(data, partition='validate', batch=100, decorr_ma
 test_gen = obj.generatePF(data, partition='validate', batch=1000, decorr_mass=True)
 
 # build the model 
-mass_hat = Adversary(config.n_mass_bins, scale=0.1)(y_hat)
+mass_hat = Adversary(config.n_mass_bins, scale=0.01)(y_hat)
 
 pivoter = Model(inputs=[inputs],
                 outputs=[y_hat, mass_hat])
-pivoter.compile(optimizer=Adam(lr=0.001),
+pivoter.compile(optimizer=Adam(lr=0.001, clipnorm=1., clipvalue=0.5),
                 loss=['categorical_crossentropy', 'categorical_crossentropy'],
-                loss_weights=[0.0005,1])
+                loss_weights=[0.01,1])
 
-print '############# ARCHITECTURE #############'
+print '############# PIVOTER #############'
 pivoter.summary()
 print '###################################'
 
@@ -126,29 +129,28 @@ print '###################################'
 Now we train both models
 '''
 
-if ADV > 0:
-    print 'TRAINING ADVERSARIAL NETWORK'
-    system('mv logs/train_lstm.log logs/train_lstm.log.old')
-    flog = open('logs/train_lstm.log','w')
+if ADV:
+    system('mv train_lstm.log train_lstm.log.old')
+    flog = open('train_lstm.log','w')
     callback = LambdaCallback(
         on_batch_end=lambda batch, logs: flog.write('batch=%i,logs=%s\n'%(batch,str(logs)))
     )
 
     tb = TensorBoard(
-        log_dir = './logs/lstm_logs',
+        log_dir = './lstm_logs',
         write_graph = True,
         write_images = True
     )
 
-    print '  -Pre-training the classifier'
-
     # bit of pre-training to get the classifer in the right place 
     classifier.fit_generator(classifier_train_gen, 
-                             steps_per_epoch=2000, 
-                             epochs=1)
+                             steps_per_epoch=5000, 
+                             epochs=1,
+                             validation_data=classifier_validation_gen,
+                             validation_steps=1000)
 
 
-    save_classifier(name='pretrained')
+    save_classifier(name='pretrained_conv')
 
 
     def save_and_exit(signal=None, frame=None, name='regularized', model=classifier):
@@ -157,46 +159,39 @@ if ADV > 0:
         exit(1)
     signal.signal(signal.SIGINT, save_and_exit)
 
-    print '  -Training the adversarial stack'
-
     # now train the model for real
     pivoter.fit_generator(train_gen, 
                           steps_per_epoch=5000,
-                          epochs=NEPOCH*2,
-                          # callbacks=[callback, tb],
+                          epochs=8,
+                          callbacks=[callback, tb],
                           validation_data=validation_gen,
                           validation_steps=100)
 
 
-    save_classifier(name='regularized')
-    save_classifier(name='pivoter', model=pivoter)
-    flog.close()
+    save_classifier(name='regularized_conv')
 
-if ADV % 2 == 0:
-    print 'TRAINING CLASSIFIER ONLY'
+    save_and_exit(name='pivoter', model=pivoter)
 
-    system('mv logs/train_lstmnoreg.log logs/train_lstmnoreg.log.old')
-    flog = open('logs/train_lstmnoreg.log','w')
+else:
+    system('mv train_lstmnoreg.log train_lstmnoreg.log.old')
+    flog = open('train_lstmnoreg.log','w')
     callback = LambdaCallback(
         on_batch_end=lambda batch, logs: flog.write('batch=%i,logs=%s\n'%(batch,str(logs)))
     )
 
     tb = TensorBoard(
-        log_dir = './logs/lstmnoreg_logs',
+        log_dir = './lstmnoreg_logs',
         write_graph = True,
         write_images = True
     )
-
-    n_epochs = 1 if (ADV == 2) else 2 # fewer epochs if network is pretrained
-    n_epochs *= NEPOCH
     
     classifier.fit_generator(classifier_train_gen, 
                              steps_per_epoch=5000, 
-                             epochs=n_epochs,
-                             # callbacks=[callback, tb],
+                             epochs=9,
+                             callbacks=[callback, tb],
                              validation_data=classifier_validation_gen,
                              validation_steps=100)
 
 
-    save_classifier(name='classifier')
+    save_classifier(name='classifier_conv')
 

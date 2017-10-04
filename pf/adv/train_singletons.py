@@ -3,6 +3,8 @@
 from sys import exit 
 from os import environ, system
 environ['KERAS_BACKEND'] = 'tensorflow'
+environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID" 
+environ["CUDA_VISIBLE_DEVICES"] = ""
 
 import numpy as np
 import utils
@@ -18,6 +20,8 @@ K.set_image_data_format('channels_last')
 import obj 
 import config 
 config.DEBUG = False
+config.n_truth = 5
+config.truth = 'resonanceType'
 
 ''' 
 instantiate data loaders 
@@ -28,11 +32,10 @@ def make_coll(fpath):
     coll.add_categories(['singletons'], fpath) 
     return coll 
 
-top = make_coll('/home/snarayan/scratch5/baconarrays/v11_repro/PARTITION/ZprimeToTTJet_3_*_CATEGORY.npy')
-higgs = make_coll('/data/t3serv014/bmaier/baconarrays/v1_repro//PARTITION/ZprimeToA0hToA0chichihbb_2_*_CATEGORY.npy')
-qcd = make_coll('/home/snarayan/scratch5/baconarrays/v11_repro/PARTITION/QCD_1_*_CATEGORY.npy') 
+top = make_coll('/home/snarayan/scratch5/baconarrays/v12_repro/PARTITION/ZprimeToTTJet_4_*_CATEGORY.npy')
+qcd = make_coll('/home/snarayan/scratch5/baconarrays/v12_repro/PARTITION/QCD_0_*_CATEGORY.npy') 
 
-data = [top, higgs, qcd]
+data = [top, qcd]
 
 # preload some data just to get the dimensions
 data[0].objects['train']['singletons'].load(memory=False)
@@ -57,7 +60,7 @@ dense   = Dense(9, activation='tanh',name='dense3',kernel_initializer='lecun_uni
 y_hat   = Dense(config.n_truth, activation='softmax')                                   (dense)
 
 classifier = Model(inputs=inputs, outputs=y_hat)
-classifier.compile(optimizer=Adam(lr=0.005),
+classifier.compile(optimizer=Adam(lr=0.001),
                    loss='categorical_crossentropy',
                    metrics=['accuracy'])
 
@@ -74,7 +77,7 @@ def save_classifier(name='tauNmsd', model=classifier):
 
 classifier.fit_generator(classifier_train_gen, 
                          steps_per_epoch=5000, 
-                         epochs=5,
+                         epochs=10,
                          validation_data=classifier_validation_gen,
                          validation_steps=1000)
 
