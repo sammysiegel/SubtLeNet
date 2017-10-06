@@ -18,17 +18,17 @@ import config
 config.n_truth = 5
 config.truth = 'resonanceType'
 
-n_batches = 1000
+n_batches = 300
 partition = 'test'
 
-OUTPUT = '/home/snarayan/public_html/figs/badnet/akt_ordering/'
+OUTPUT = '/home/snarayan/public_html/figs/badnet/akt_ordering_conv/'
 system('mkdir -p '+OUTPUT)
 
 p = utils.Plotter()
 r = utils.Roccer()
 
 #components=['singletons', 'inclusive', 'nn1', 'nn2']
-components=['singletons', 'inclusive', 'nn']
+components=['singletons', 'inclusive', 'nn', 'nn_conv']
 
 
 def make_coll(fpath):
@@ -45,6 +45,9 @@ colls = {
 # run DNN
 def predict(data, model):
     return data['nn'][:,model]
+
+def predict_conv(data, model):
+    return data['nn_conv'][:,model]
    
 def predict1(data, model):
     return data['nn1'][:,model]
@@ -56,20 +59,37 @@ f_vars = {
   'tau32' : (lambda x : x['singletons'][:,obj.singletons['tau32']], np.arange(0,1.2,0.01)),
   'tau21' : (lambda x : x['singletons'][:,obj.singletons['tau21']], np.arange(0,1.2,0.01)),
   'partonM' : (lambda x : x['singletons'][:,obj.singletons['partonM']], np.arange(0,400,5)),
-  'msd'   : (lambda x : x['singletons'][:,obj.singletons['msd']], np.arange(0.,400.,10.)),
+  'msd'   : (lambda x : x['singletons'][:,obj.singletons['msd']], np.arange(0.,400.,20.)),
   'pt'    : (lambda x : x['singletons'][:,obj.singletons['pt']], np.arange(250.,1000.,50.)),
   'shallow_t' : (lambda x : predict(x, 0), np.arange(0,1.2,0.001)),
   'classifier_t'   : (lambda x : predict(x, 1), np.arange(0,1.2,0.001)),
   'regularized_t'   : (lambda x : predict(x, 2), np.arange(0,1.2,0.001)),
+  'classifier_conv_t'   : (lambda x : predict_conv(x, 0), np.arange(0,1.2,0.001)),
+  'regularized_conv_t'   : (lambda x : predict_conv(x, 1), np.arange(0,1.2,0.001)),
 }
 
+f_vars2d = {
+  'correlation_reg' : (lambda x : (x['singletons'][:,obj.singletons['msd']], predict(x, 2)),
+                       np.arange(0,400,10),
+                       np.arange(0,1.2,0.001)),
+  'correlation_class' : (lambda x : (x['singletons'][:,obj.singletons['msd']], predict(x, 1)),
+                       np.arange(0,400,10),
+                       np.arange(0,1.2,0.001)),
+}
 
 # unmasked first
 hists = {}
+hists2d = {}
 for k,v in colls.iteritems():
-    hists[k] = v.draw(components=components,
-                      f_vars=f_vars, n_batches=n_batches, partition=partition)
+    hists[k],hists2d[k] = v.draw(components=components,
+                                 f_vars=f_vars, f_vars2d=f_vars2d,
+                                 n_batches=n_batches, partition=partition)
 
+
+hists2d['q']['correlation_reg'].plot(xlabel=r'$m_{SD}$', ylabel='Regularized NN', 
+                                     output=OUTPUT+'correlation_reg')
+hists2d['q']['correlation_class'].plot(xlabel=r'$m_{SD}$', ylabel='Classifier NN', 
+                                       output=OUTPUT+'correlation_class')
 
 for k in hists['t']:
     ht = hists['t'][k]
@@ -82,306 +102,114 @@ for k in hists['t']:
     p.add_hist(ht, '3-prong top', 'r')
     # p.add_hist(hh, '2-prong Higgs', 'b')
     p.add_hist(hq, '1-prong QCD', 'k')
-    p.plot({'output':OUTPUT+'unmasked_'+k})
+    p.plot(**{'output':OUTPUT+'unmasked_'+k})
 
 r.clear()
 r.add_vars(hists['t'],
            hists['q'],
            {'tau32':r'$\tau_{32}$', 'classifier_t':'classifier', 
             'regularized_t':'regularized', 'msd':r'$m_{SD}$',
+            'classifier_conv_t':'classifier conv',
+            'regularized_conv_t':'regularized conv',
             'shallow_t':r'$\tau_{21}+\tau_{32}+m_{SD}$'},
            )
-r.plot({'output':OUTPUT+'unmasked_top_roc'})
+r.plot(**{'output':OUTPUT+'unmasked_top_roc'})
 
-# r.clear()
-# r.add_vars(hists['h'],
-#            hists['q'],
-#            {'tau32':r'$\tau_{21}$', 'classifier_h':'classifier', 
-#             'regularized_h':'regularized', 'msd':r'$m_{SD}$',
-#             'shallow_h':r'$\tau_{21}+\tau_{32}+m_{SD}$'},
-#            )
-# r.plot({'output':OUTPUT+'unmasked_higgs_roc'})
-
-
-n_batches = 400
-
-# # mask the top mass
-# def f_mask(data):
-#     mass = data['singletons'][:,obj.singletons['msd']]
-#     return (mass > 110) & (mass < 210)
-
-
-# f_vars = {
-#   'tau32' : (lambda x : x['singletons'][:,obj.singletons['tau32']], np.arange(0,1.2,0.01)),
-#   'partonM' : (lambda x : x['singletons'][:,obj.singletons['partonM']], np.arange(0,400,5)),
-#   'msd'   : (lambda x : x['singletons'][:,obj.singletons['msd']], np.arange(0.,400.,10.)),
-#   'pt'    : (lambda x : x['singletons'][:,obj.singletons['pt']], np.arange(250.,1000.,50.)),
-#   'shallow_t' : (lambda x : predict(x, 0), np.arange(0,1.2,0.001)),
-#   'classifier_t'   : (lambda x : predict(x, 1), np.arange(0,1.2,0.001)),
-#   'regularized_t'   : (lambda x : predict(x, 2), np.arange(0,1.2,0.001)),
-#  }
-
-# hists = {}
-# for k,v in colls.iteritems():
-#     hists[k] = v.draw(components=['singletons', 'inclusive', 'nn'],
-#                       f_vars=f_vars, n_batches=n_batches, partition=partition, f_mask=f_mask)
-
-
-# for k in hists['t']:
-#     ht = hists['t'][k]
-#     hq = hists['q'][k]
-#     # hh = hists['h'][k]
-#     for h in [ht, hq]:
-#         h.scale()
-#     p.clear()
-#     p.add_hist(ht, '3-prong top', 'r')
-#     # p.add_hist(hh, '3-prong Higgs', 'b')
-#     p.add_hist(hq, '1-prong QCD', 'k')
-#     p.plot({'output':OUTPUT+'topmass_'+k})
-
-# r.clear()
-# r.add_vars(hists['t'],
-#            hists['q'],
-#            {'tau32':r'$\tau_{32}$', 'classifier_t':'classifier', 
-#             'regularized_t':'regularized', 'msd':r'$m_{SD}$',
-#             'shallow_t':r'$\tau_{21}+\tau_{32}+m_{SD}$'},
-#            )
-# r.plot({'output':OUTPUT+'topmass_top_roc'})
-
-
-'''
-# mask the higgs mass
+# mask the top mass
 def f_mask(data):
     mass = data['singletons'][:,obj.singletons['msd']]
-    return (mass > 90) & (mass < 140)
+    return (mass > 110) & (mass < 210)
 
 
 f_vars = {
-  'tau21' : (lambda x : x['singletons'][:,obj.singletons['tau21']], np.arange(0,1.2,0.01)),
+  'tau32' : (lambda x : x['singletons'][:,obj.singletons['tau32']], np.arange(0,1.2,0.01)),
   'partonM' : (lambda x : x['singletons'][:,obj.singletons['partonM']], np.arange(0,400,5)),
   'msd'   : (lambda x : x['singletons'][:,obj.singletons['msd']], np.arange(0.,400.,20.)),
   'pt'    : (lambda x : x['singletons'][:,obj.singletons['pt']], np.arange(250.,1000.,50.)),
-  'shallow_h' : (lambda x : predict_hs(x, shallow), np.arange(0,1.2,0.01)),
-  'classifier_h'   : (lambda x : predict_h(x, classifier), np.arange(0,1.2,0.01)),
-  'regularized_h'   : (lambda x : predict_h(x, regularized), np.arange(0,1.2,0.01)),
+  'shallow_t' : (lambda x : predict(x, 0), np.arange(0,1.2,0.001)),
+  'classifier_t'   : (lambda x : predict(x, 1), np.arange(0,1.2,0.001)),
+  'regularized_t'   : (lambda x : predict(x, 2), np.arange(0,1.2,0.001)),
+  'classifier_conv_t'   : (lambda x : predict_conv(x, 0), np.arange(0,1.2,0.001)),
+  'regularized_conv_t'   : (lambda x : predict_conv(x, 1), np.arange(0,1.2,0.001)),
  }
 
 hists = {}
 for k,v in colls.iteritems():
-    hists[k] = v.draw(components=['singletons', 'inclusive'],
+    hists[k] = v.draw(components=components,
                       f_vars=f_vars, n_batches=n_batches, partition=partition, f_mask=f_mask)
 
 
 for k in hists['t']:
     ht = hists['t'][k]
     hq = hists['q'][k]
-    hh = hists['h'][k]
-    for h in [ht, hq, hh]:
+    # hh = hists['h'][k]
+    for h in [ht, hq]:
         h.scale()
     p.clear()
     p.add_hist(ht, '3-prong top', 'r')
-    p.add_hist(hh, '3-prong Higgs', 'b')
+    # p.add_hist(hh, '3-prong Higgs', 'b')
     p.add_hist(hq, '1-prong QCD', 'k')
-    p.plot({'output':OUTPUT+'higgsmass_'+k})
+    p.plot(**{'output':OUTPUT+'topmass_'+k})
 
 r.clear()
-r.add_vars(hists['h'],
+r.add_vars(hists['t'],
            hists['q'],
-           {'tau21':r'$\tau_{21}$', 'classifier_h':'classifier', 
-            'regularized_h':'regularized', 'msd':r'$m_{SD}$',
-            'shallow_h':r'$\tau_{21}+\tau_{32}+m_{SD}$'},
+           {'tau32':r'$\tau_{32}$', 'classifier_t':'classifier', 
+            'regularized_t':'regularized', 'msd':r'$m_{SD}$',
+            'classifier_conv_t':'classifier conv',
+            'regularized_conv_t':'regularized conv',
+            'shallow_t':r'$\tau_{21}+\tau_{32}+m_{SD}$'},
            )
-r.plot({'output':OUTPUT+'higgsmass_higgs_roc'})
+r.plot(**{'output':OUTPUT+'topmass_top_roc'})
 
-'''
+
+# exit(0)
 
 # get the cuts
-threshold = 0.95
-h = hists['q']['classifier_t']
-classifier_cut = 0
-for ib in xrange(h.bins.shape[0]):
-    frac = h.integral(lo=0, hi=ib) / h.integral()
-    if frac >= threshold:
-        classifier_cut = h.bins[ib]
-        break
+threshold = 0.98
 
-h = hists['q']['regularized_t']
-regularized_cut = 0
-for ib in xrange(h.bins.shape[0]):
-    frac = h.integral(lo=0, hi=ib) / h.integral()
-    if frac >= threshold:
-        regularized_cut = h.bins[ib]
-        break
+def sculpting(name, f_mask):
+  h = hists['q'][name]
+  cut = 0
+  for ib in xrange(h.bins.shape[0]):
+      frac = h.integral(lo=0, hi=ib) / h.integral()
+      if frac >= threshold:
+          cut = h.bins[ib]
+          break
 
-h = hists['q']['shallow_t']
-shallow_cut = 0
-for ib in xrange(h.bins.shape[0]):
-    frac = h.integral(lo=0, hi=ib) / h.integral()
-    if frac >= threshold:
-        shallow_cut = h.bins[ib]
-        break
+  print name, cut 
 
-print 'classifier', classifier_cut
-print 'regularized', regularized_cut
-print 'shallow', shallow_cut
+  f_vars = {
+  'partonM' : (lambda x : x['singletons'][:,obj.singletons['partonM']], np.arange(0,400,5)),
+  'msd'   : (lambda x : x['singletons'][:,obj.singletons['msd']], np.arange(0.,400.,20.)),
+  'pt'    : (lambda x : x['singletons'][:,obj.singletons['pt']], np.arange(250.,1000.,50.)),
+  }
 
-# mask pretrain
-def f_mask(data, model, cut):
+  tmp_hists = {}
+  tmp_hists['q'] = colls['q'].draw(components=components,
+                                   f_vars=f_vars, n_batches=n_batches, partition=partition, 
+                                   f_mask = lambda x : f_mask(x, cut))
+  tmp_hists['t'] = colls['t'].draw(components=components,
+                                   f_vars=f_vars, n_batches=n_batches, partition=partition, 
+                                   f_mask = lambda x : f_mask(x, cut))
+
+  for k in tmp_hists['q']:
+      htop = tmp_hists['t'][k]
+      hqcd = tmp_hists['q'][k]
+      htop.scale() 
+      hqcd.scale()
+      p.clear()
+      p.add_hist(htop, '3-prong', 'r')
+      p.add_hist(hqcd, '1-prong', 'k')
+      p.plot(**{'output':OUTPUT+name+'_'+k})
+
+def f_mask_base(data, model, cut):
     return predict(data, model) > cut
-# def f_mask(data, model, cut):
-#     return predict2(data) > cut
+def f_mask_conv_base(data, model, cut):
+    return predict_conv(data, model) > cut
 
-n_batches = 10000
-
-# hists['t'] = colls['t'].draw(components=['singletons', 'inclusive'],
-#                        f_vars=f_vars, n_batches=n_batches, partition=partition,
-#                        f_mask = lambda x : f_mask(x, classifier, classifier_cut))
-hists['q'] = colls['q'].draw(components=components,
-                       f_vars=f_vars, n_batches=n_batches, partition=partition, 
-                       f_mask = lambda x : f_mask(x, 1, classifier_cut))
-
-for k in hists['q']:
-#    htop = hists['t'][k]
-    hqcd = hists['q'][k]
-#    htop.scale() 
-    hqcd.scale()
-    p.clear()
-#    p.add_hist(htop, '3-prong', 'r')
-    p.add_hist(hqcd, '1-prong', 'k')
-    p.plot({'output':OUTPUT+'classifier_'+k})
-
-
-# def f_mask(data, model, cut):
-#     return predict1(data, model) > cut
-
-#hists['t'] = colls['t'].draw(components=['singletons', 'inclusive'],
-#                       f_vars=f_vars, n_batches=n_batches, partition=partition,
-#                       f_mask = lambda x : f_mask(x, regularized, regularized_cut))
-hists['q'] = colls['q'].draw(components=components,
-                       f_vars=f_vars, n_batches=n_batches, partition=partition,
-                       f_mask = lambda x : f_mask(x, 2, regularized_cut))
-
-for k in hists['q']:
-#    htop = hists['t'][k]
-    hqcd = hists['q'][k]
-#    htop.scale() 
-    hqcd.scale()
-    p.clear()
-#    p.add_hist(htop, '3-prong', 'r')
-    p.add_hist(hqcd, '1-prong', 'k')
-    p.plot({'output':OUTPUT+'regularized_'+k})
-
-
-# mask tau32
-
-#hists['t'] = colls['t'].draw(components=['singletons', 'inclusive'],
-#                       f_vars=f_vars, n_batches=n_batches, 
-#                       f_mask = lambda x : f_mask(x, shallow, shallow_cut))
-hists['q'] = colls['q'].draw(components=components,
-                       f_vars=f_vars, n_batches=n_batches, 
-                       f_mask = lambda x : f_mask(x, 0, shallow_cut))
-
-for k in hists['q']:
-#    htop = hists['t'][k]
-    hqcd = hists['q'][k]
-#    htop.scale() 
-    hqcd.scale()
-    p.clear()
-#    p.add_hist(htop, '3-prong', 'r')
-    p.add_hist(hqcd, '1-prong', 'k')
-    p.plot({'output':OUTPUT+'shallow_'+k})
-
-# now mask the higgs classifiers
-'''
-threshold = 0.99
-h = hists['q']['classifier_h']
-classifier_cut = 0
-for ib in xrange(h.bins.shape[0]):
-    frac = h.integral(lo=0, hi=ib) / h.integral()
-    if frac >= threshold:
-        classifier_cut = h.bins[ib]
-        break
-
-h = hists['q']['regularized_h']
-regularized_cut = 0
-for ib in xrange(h.bins.shape[0]):
-    frac = h.integral(lo=0, hi=ib) / h.integral()
-    if frac >= threshold:
-        regularized_cut = h.bins[ib]
-        break
-
-h = hists['q']['shallow_h']
-shallow_cut = 0
-
-for ib in xrange(h.bins.shape[0]):
-    frac = h.integral(lo=0, hi=ib) / h.integral()
-    if frac >= threshold:
-        shallow_cut =  h.bins[ib]
-        break
-
-print 'classifier', classifier_cut
-print 'regularized', regularized_cut
-print 'shallow', shallow_cut
-
-# mask pretrain
-def f_mask(data, model, cut):
-    return predict_h(data, model) > cut
-
-hists['h'] = colls['h'].draw(components=['singletons', 'inclusive'],
-                       f_vars=f_vars, n_batches=n_batches, partition=partition,
-                       f_mask = lambda x : f_mask(x, classifier, classifier_cut))
-hists['q'] = colls['q'].draw(components=['singletons', 'inclusive'],
-                       f_vars=f_vars, n_batches=n_batches, partition=partition, 
-                       f_mask = lambda x : f_mask(x, classifier, classifier_cut))
-
-for k in hists['h']:
-    htop = hists['h'][k]
-    hqcd = hists['q'][k]
-    htop.scale() 
-    hqcd.scale()
-    p.clear()
-    p.add_hist(htop, '2-prong', 'r')
-    p.add_hist(hqcd, '1-prong', 'k')
-    p.plot({'output':OUTPUT+'classifierh_'+k})
-
-
-hists['h'] = colls['h'].draw(components=['singletons', 'inclusive'],
-                       f_vars=f_vars, n_batches=n_batches, partition=partition,
-                       f_mask = lambda x : f_mask(x, regularized, regularized_cut))
-hists['q'] = colls['q'].draw(components=['singletons', 'inclusive'],
-                       f_vars=f_vars, n_batches=n_batches, partition=partition,
-                       f_mask = lambda x : f_mask(x, regularized, regularized_cut))
-
-for k in hists['h']:
-    htop = hists['h'][k]
-    hqcd = hists['q'][k]
-    htop.scale() 
-    hqcd.scale()
-    p.clear()
-    p.add_hist(htop, '2-prong', 'r')
-    p.add_hist(hqcd, '1-prong', 'k')
-    p.plot({'output':OUTPUT+'regularizedh_'+k})
-
-
-# mask tau32
-def f_mask(data, model, cut):
-    return predict_hs(data, model) > cut
-
-hists['h'] = colls['h'].draw(components=['singletons', 'inclusive'],
-                       f_vars=f_vars, n_batches=n_batches, 
-                       f_mask = lambda x : f_mask(x, shallow, shallow_cut))
-hists['q'] = colls['q'].draw(components=['singletons', 'inclusive'],
-                       f_vars=f_vars, n_batches=n_batches, 
-                       f_mask = lambda x : f_mask(x, shallow, shallow_cut))
-
-for k in hists['h']:
-    htop = hists['h'][k]
-    hqcd = hists['q'][k]
-    htop.scale() 
-    hqcd.scale()
-    p.clear()
-    p.add_hist(htop, '2-prong', 'r')
-    p.add_hist(hqcd, '1-prong', 'k')
-    p.plot({'output':OUTPUT+'shallowh_'+k})
-
-'''
+sculpting('regularized_conv_t', f_mask = lambda d, c : f_mask_conv_base(d, 1, c))
+sculpting('classifier_t', f_mask = lambda d, c : f_mask_base(d, 1, c))
+sculpting('classifier_conv_t', f_mask = lambda d, c : f_mask_conv_base(d, 0, c))
+sculpting('regularized_t', f_mask = lambda d, c : f_mask_base(d, 2, c))
+sculpting('shallow_t', f_mask = lambda d, c : f_mask_base(d, 0, c))

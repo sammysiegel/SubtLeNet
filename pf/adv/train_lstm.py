@@ -23,9 +23,9 @@ import config
 config.n_truth = 5
 config.truth = 'resonanceType'
 config.adversary_mask = 0
-ADV = 1
 
-NEPOCH = 1
+ADV = 2
+NEPOCH = 2
 
 ''' 
 instantiate data loaders 
@@ -110,13 +110,13 @@ validation_gen = obj.generatePF(data, partition='validate', batch=100, decorr_ma
 test_gen = obj.generatePF(data, partition='validate', batch=1000, decorr_mass=True)
 
 # build the model 
-mass_hat = Adversary(config.n_mass_bins, scale=0.1)(y_hat)
+mass_hat = Adversary(config.n_mass_bins, scale=0.01)(y_hat)
 
 pivoter = Model(inputs=[inputs],
                 outputs=[y_hat, mass_hat])
 pivoter.compile(optimizer=Adam(lr=0.001),
                 loss=['categorical_crossentropy', 'categorical_crossentropy'],
-                loss_weights=[0.0005,1])
+                loss_weights=[0.0001,1])
 
 print '############# ARCHITECTURE #############'
 pivoter.summary()

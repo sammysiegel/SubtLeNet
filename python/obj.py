@@ -9,6 +9,9 @@ from re import sub
 from utils import *
 from sys import stdout, stderr
 from math import floor
+from time import time 
+from multiprocessing import Process, Pool
+
 
 _partitions = ['train', 'test', 'validate']
 
@@ -35,6 +38,22 @@ it ought to be on my TODO to integrate these. The data itself sits on disk, but 
 built in memory when the dataset is accessed (only once).
 '''
 
+class LazyData(object):
+    def __init__(self, fpath=None, data=None, lazy=False):
+        self.fpath = fpath 
+        self.data = data
+        self.loaded = not(data is None)
+        if not lazy and data is None:
+            self.__call__()  
+    def __call__(self):
+        if config.DEBUG: stderr.write('Loading %s\n'%fpath)
+        stderr.flush()
+        self.data = np.nan_to_num(np.load(fpath))
+        self.loaded = True 
+    def __getitem__(self, *args):
+        # not sure how to implement slicing, etc through this interface
+        self.data[*args]
+
 class DataObject(object):
     def __init__(self, fpaths):
         self.inputs = fpaths
@@ -43,14 +62,13 @@ class DataObject(object):
         self.data = None 
         self.last_loaded = None 
 
-    def load(self, idx=-1, memory=True, dry=False):
+    def load(self, idx=-1, memory=True, dry=False, lazy=False ):
         if idx > 0:
             fpath = self.inputs[idx]
             if not dry:
-                if config.DEBUG: stderr.write('Loading %s\n'%fpath)
-                stderr.flush()
-                self.data = np.nan_to_num(np.load(fpath))
-                self.n_available = self.data.shape[0]
+                self.data = LazyData(fpath=fpath, lazy=lazy)
+                if not lazy:
+                    self.n_available = self.data.data.shape[0]
             else:
                 self.n_available = 0
                 self.data = None
@@ -62,10 +80,9 @@ class DataObject(object):
             for fpath in self.inputs:
                 if fpath not in self.loaded:
                     if not dry:
-                        if config.DEBUG: stderr.write('Loading %s\n'%fpath)
-                        stderr.flush()
-                        self.data = np.nan_to_num(np.load(fpath))
-                        self.n_available = self.data.shape[0]
+                        self.data = LazyData(fpath=fpath, lazy=lazy)
+                        if not lazy:
+                            self.n_available = self.data.data.shape[0]
                     else:
                         self.n_available = 0
                         self.data = None
@@ -82,8 +99,9 @@ class DataObject(object):
         self.loaded = set([])
 
     def __getitem__(self, indices=None):
-        if indices:
-            return self.data[indices]
+        if indices and self.data.loaded:
+            _data = self.data.data[indices]
+            return LazyData(fpath=fpath, data=_data, lazy=True)
         else:
             return self.data 
 
@@ -147,7 +165,8 @@ class _DataCollection(object):
             data[k] = v[indices]
         return data 
 
-    def draw(self, components, f_vars, f_mask=None, weighted=True, partition='test', n_batches=None):
+    def draw(self, components, f_vars={}, f_mask=None, 
+             weighted=True, partition='test', n_batches=None, f_vars2d={}):
         '''draw generic stuff
         
         Arguments:
@@ -161,11 +180,12 @@ class _DataCollection(object):
             n_batches {[type]} -- number of batches to use, default is all (default: {None})
         '''
         hists = {var:NH1(x[1]) for var,x in f_vars.iteritems()}
+        hists2d = {var:NH2(x[1],x[2]) for var,x in f_vars2d.iteritems()}
         i_batches = 0 
-        gen = self.generator(components+[self.weight], partition, batch=10000)
+        gen = self.generator(components+[self.weight], partition, batch=None, lazy=False)
         while True:
             try:
-                data = next(gen)
+                data = next(gen).data 
                 mask = f_mask(data) if f_mask else None 
                 weight = data[self.weight] if weighted else None
 
@@ -184,6 +204,24 @@ class _DataCollection(object):
                     assert w.shape == x.shape, 'Shapes are not aligned %s %s'%(str(w.shape), str(x.shape))
                     h.fill_array(x, weights=w)
 
+                for var in hists2d: 
+                    h = hists2d[var]
+                    f = f_vars2d[var][0]
+                    x,y = f(data)
+                    if mask is not None:
+                        x = x[mask]
+                        y = y[mask]
+                        w = weight[mask]
+                    else:
+                        w = weight 
+                    if len(x.shape) > 1:
+                        w = np.array([w for _ in x.shape[1]]).flatten()
+                        y = y.flatten()
+                        x = x.flatten()
+                    assert (w.shape==x.shape and w.shape==y.shape), \
+                           'Shapes are not aligned %s %s %s'%(str(w.shape), str(x.shape), str(y.shape))
+                    h.fill_array(x, y, weights=w)
+
             except StopIteration:
                 break 
             if n_batches:
@@ -193,23 +231,41 @@ class _DataCollection(object):
                 stdout.flush()
                 if i_batches >= n_batches:
                     break
-        stdout.write('\n'); stdout.flush() # flush the screen
+        if n_batches:
+            stdout.write('\n'); stdout.flush() # flush the screen
         self.refresh(partitions=[partition])
-        return hists 
+        if len(hists) and len(hists2d):
+            return hists, hists2d 
+        elif len(hists2d):
+            return hists2d 
+        else:
+            return hists
 
-    def infer(self, components, f, name, partition='test'):
-        gen = self.generator(components+[self.weight], partition, batch=None)
-        counter = 0 
-        while True:
-            try:
-                stdout.write('%i\r'%counter); stdout.flush(); counter += 1 
-                data = next(gen)
+    def infer(self, components, f, name, partition='test', ncores=1):
+        gen = self.generator(components+[self.weight], partition, batch=None, lazy=(ncores>1))
+        if ncores == 1:
+            counter = 0 
+            starttime = time()
+            while True:
+                try:
+                    stdout.write('%i (%i s)\r'%(counter, time()-starttime)); stdout.flush(); counter += 1 
+                    data = {k:v.data for k,v in next(gen).iteritems()}
+                    inference = f(data)
+                    out_name = self.objects[partition]['singletons'].last_loaded.replace('singletons', name)
+                    np.save(out_name, inference)
+
+                except StopIteration:
+                    break 
+        else:
+            l = list(gen)
+            def f(ldata):
+                ldata() 
+                data = {k:v.data for k,v in ldata.iteritems()} 
                 inference = f(data)
-                out_name = self.objects[partition]['singletons'].last_loaded.replace('singletons', name)
+                out_name = ldata['singletons'].fpath.replace('singletons', name)
                 np.save(out_name, inference)
-
-            except StopIteration:
-                break 
+            pool = Pool(ncores)
+            pool.map(f, l)
 
     def refresh(self, partitions=None):
         '''refresh
@@ -224,33 +280,36 @@ class _DataCollection(object):
             for o in self.objects[p].values():
                 o.refresh()
 
-    def generator(self, components=None, partition='test', batch=10, repartition=False, normalize=False):
+    def generator(self, components=None, partition='test', batch=10, repartition=False, normalize=False, lazy=False):
         # used as a generic generator for loading data
         while True:
-            if not self.load(components=components, partition=partition, repartition=repartition):
+            if not self.load(components=components, partition=partition, repartition=repartition, lazy=lazy):
                 raise StopIteration
-            data = self.__getitem__()
-            sane = True 
-            for _,v in data.iteritems():
-                if np.isnan(np.sum(v)): # seems to be the fastest way
-                    sane = False
-            if not sane:
-                print 'ERROR - last loaded data was not sane!'
-                continue
-            N = data[components[0]].shape[0]
-            if normalize and self.weight in components and batch:
-                data[self.weight] /= batch # normalize the weight to the size of batches
+            ldata = self.__getitem__()
+            if ldata.values()[0].loaded:
+                sane = True 
+                for _,v in ldata.iteritems():
+                    if np.isnan(np.sum(v.data)): # seems to be the fastest way
+                        sane = False
+                if not sane:
+                    print 'ERROR - last loaded data was not sane!'
+                    continue
+                N = ldata[components[0]].data.shape[0]
+                if normalize and self.weight in components and batch:
+                    ldata[self.weight].data /= batch # normalize the weight to the size of batches
+                else:
+                    ldata[self.weight].data /= 100 
+                if batch:
+                    n_batches = int(floor(N * 1. / batch + 0.5))
+                    for ib in xrange(n_batches):
+                        lo = ib * batch 
+                        hi = min(N, (ib + 1) * batch)
+                        to_yield = {k:LazyData(data=v.data[lo:hi], lazy=True) for k,v in ldata.iteritems()}
+                        yield to_yield 
+                else:
+                    yield ldata 
             else:
-                data[self.weight] /= 100 
-            if batch:
-                n_batches = int(floor(N * 1. / batch + 0.5))
-                for ib in xrange(n_batches):
-                    lo = ib * batch 
-                    hi = min(N, (ib + 1) * batch)
-                    to_yield = {k:v[lo:hi] for k,v in data.iteritems()}
-                    yield to_yield 
-            else:
-                yield data 
+                yield ldata 
 
 
 # why is this even a separate class? abstracted everything away
@@ -276,11 +335,11 @@ class PFSVCollection(_DataCollection):
         data = super(PFSVCollection, self).__getitem__(indices)
         data['weight'] = data[self.weight]
         data['nP'] = np_utils.to_categorical(
-                data['singletons'][:,singletons[config.truth]].astype(np.int),
+                data['singletons'].data[:,singletons[config.truth]].astype(np.int),
                 config.n_truth
             )
         data['nB'] = np_utils.to_categorical(
-                data['singletons'][:,singletons['nB']].astype(np.int),
+                data['singletons'].data[:,singletons['nB']].astype(np.int),
                 10
             )
         return data 
@@ -342,8 +401,8 @@ def generateTest(collections, partition='train', batch=32, repartition=True, dec
     prongs_index = singletons[config.truth]
     msd_index = singletons['msd']
     def xform_mass(x):
-        binned = (np.minimum(x, config.max_mass) / config.max_mass * (config.n_mass_bins - 1)).astype(np.int)
-        onehot = np_utils.to_categorical(binned, config.n_mass_bins)
+        binned = (np.minimum(x, config.max_mass) / config.max_mass * (config.n_decorr_bins - 1)).astype(np.int)
+        onehot = np_utils.to_categorical(binned, config.n_decorr_bins)
         return onehot
     while True: 
         inputs = []
@@ -390,7 +449,7 @@ def generateSingletons(collections, variables, partition='train', batch=32,
         outputs = []
         weights = []
         for c in collections:
-            data = next(generators[c])
+            data = {k:v.data for k,v in next(generators[c]).iteritems()}
             inputs.append([data['singletons'][:,var_idx]])
             # need to apply osme normalization to the inputs:
             mus = np.array([0.5, 0.5, 75])
@@ -420,7 +479,8 @@ def generateSingletons(collections, variables, partition='train', batch=32,
 
 
 def generatePF(collections, partition='train', batch=32, 
-               repartition=True, mask=False, decorr_mass=False, normalize=False):
+               repartition=True, mask=False, decorr_mass=False, decorr_pt=False,
+               normalize=False):
     small_batch = max(1, int(batch / len(collections)))
     generators = {c:c.generator(components=['singletons', 'inclusive', c.weight],
                                         partition=partition, 
@@ -430,17 +490,23 @@ def generatePF(collections, partition='train', batch=32,
                     for c in collections}
     prongs_index = singletons[config.truth]
     msd_index = singletons['msd']
-    norm_factor = 1. / config.max_mass 
+    pt_index = singletons['pt']
+    mass_norm_factor = 1. / config.max_mass 
+    pt_norm_factor = 1. / (config.max_pt - config.min_pt)
     def xform_mass(x):
-        binned = (np.minimum(x, config.max_mass) * norm_factor * (config.n_mass_bins - 1)).astype(np.int)
-        onehot = np_utils.to_categorical(binned, config.n_mass_bins)
+        binned = (np.minimum(x, config.max_mass) * mass_norm_factor * (config.n_decorr_bins - 1)).astype(np.int)
+        onehot = np_utils.to_categorical(binned, config.n_decorr_bins)
+        return onehot
+    def xform_pt(x):
+        binned = (np.minimum(x-config.min_pt, config.max_pt-config.min_pt) * pt_norm_factor * (config.n_decorr_bins - 1)).astype(np.int)
+        onehot = np_utils.to_categorical(binned, config.n_decorr_bins)
         return onehot
     while True: 
         inputs = []
         outputs = []
         weights = []
         for c in collections:
-            data = next(generators[c])
+            data = {k:v.data for k,v in next(generators[c]).iteritems()}
             if limit:
                 inputs.append([data['inclusive'][:,:limit,:]])
             else:
@@ -455,6 +521,11 @@ def generatePF(collections, partition='train', batch=32,
                 o.append(mass)
                 w.append(w[0] * nprongs[:,config.adversary_mask])
 
+            if decorr_pt:
+                pt = xform_pt(data['singletons'][:,pt_index])
+                o.append(pt)
+                w.append(w[0] * nprongs[:,config.adversary_mask])
+
             outputs.append(o)
             weights.append(w)
 
@@ -464,7 +535,7 @@ def generatePF(collections, partition='train', batch=32,
 
         merged_outputs = []
         merged_weights = []
-        NOUTPUTS = 2 if decorr_mass else 1 
+        NOUTPUTS = 1 + int(decorr_pt) + int(decorr_mass)
         for j in xrange(NOUTPUTS):
             merged_outputs.append(np.concatenate([v[j] for v in outputs], axis=0))
             merged_weights.append(np.concatenate([v[j] for v in weights], axis=0))
@@ -484,7 +555,7 @@ def generatePFSV(collections, partition='train', batch=32):
         outputs = []
         weights = []
         for c in collections:
-            i, o, w = next(generators[c])
+            i, o, w = next(generators[c]).data
             inputs.append(i)
             outputs.append(o)
             weights.append(w)

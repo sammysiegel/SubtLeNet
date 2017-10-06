@@ -5,6 +5,7 @@ from scipy.interpolate import interp1d
 import matplotlib as mpl
 mpl.use('cairo')
 import matplotlib.pylab as pl 
+from matplotlib.colors import LogNorm 
 from matplotlib import pyplot as plt
 import seaborn
 
@@ -29,6 +30,7 @@ class NH1(object):
         assert(len(bins) > 1)
         self.bins = np.array(bins )
         self._content = np.array([0 for x in range(len(bins)+1)], dtype=np.float64)
+        self._sumw2 = np.array([0 for x in range(len(bins)+1)], dtype=np.float64)
     def find_bin(self, x):
         for ix in xrange(len(self.bins)):
             if x < self.bins[ix]:
@@ -36,17 +38,23 @@ class NH1(object):
         return len(self.bins)
     def get_content(self, ix):
         return self._content[ix]
+    def get_error(self, ix):
+        return np.sqrt(self._sumw2[ix])
     def set_content(self, ix, val):
         self._content[ix] = val
     def fill(self, x, y=1):
-        self._content[self.find_bin(x)] += y
+        ix = self.find_bin(x)
+        self._content[ix] += y
+        self._sumw2[ix] = pow(y, 2)
     def fill_array(self, x, weights=None):
         mask = sanitize_mask(x)
         mask &= sanitize_mask(weights)
         x_masked = x[mask]
         weights_masked = None if (weights is None) else weights[mask]
         hist = np.histogram(x_masked, bins=self.bins, weights=weights_masked, density=False)[0]
+        herr = np.histogram(x_masked, bins=self.bins, weights=np.square(weights_masked), density=False)[0]
         self._content += np.concatenate([[0],hist,[0]])
+        self._sumw2 += np.concatenate([[0],herr,[0]])
     def add_array(self, arr):
         self._content += arr.astype(np.float64)
     def save(self, fpath):
@@ -79,22 +87,37 @@ class NH1(object):
     def scale(self, scale=None):
         norm = float(scale if scale else 1./self.integral())
         self._content *= norm 
+        self._sumw2 *= (norm ** 2)
     def invert(self):
         for ix in range(self._content.shape[0]):
             val = self._content[ix]
             if val:
+                relerr = np.sqrt(self._sumw2[ix])/val 
                 self._content[ix] = 1000./val
+                self._sumw2[ix] = relerr * self._content[ix]
     def eval_array(self, arr):
         def f(x):
             return self.get_content(self.find_bin(x))
         f = np.vectorize(f)
         return f(arr)
-    def plot(self, opts):
-        plt.hist(self.bins[:-1], bins=self.bins, weights=self._content[1:-1],
-                 histtype='step',
-                 color=opts['color'],
-                 label=opts['label'],
-                 linewidth=2)
+    def plot(self, color, label, errors=False):
+        if errors: 
+            bin_centers = 0.5*(self.bins[1:] + self.bins[:-1])
+            errs = np.sqrt(self._sumw2)
+            plt.errorbar(bin_centers, 
+                         self._content[1:-1],
+                         yerr = errs[1:-1],
+                         marker = '.',
+                         drawstyle = 'steps-mid',
+                         color=color,
+                         label=label,
+                         linewidth=2)
+        else:
+            plt.hist(self.bins[:-1], bins=self.bins, weights=self._content[1:-1],
+                     histtype='step',
+                     color=color,
+                     label=label,
+                     linewidth=2)
     def mean(self):
         sumw = 0 
         bin_centers = 0.5 * (self.bins[:-1] + self.bins[1:])
@@ -123,6 +146,61 @@ class NH1(object):
         return np.sqrt(max(0, variance))
 
 
+class NH2(object):
+    def __init__(self, binsx, binsy):
+        self.binsx = binsx 
+        self.binsy = binsy 
+        self._content = np.zeros([len(binsx)+1, len(binsy)+1], dtype=np.float64)
+    def _find_bin(self, val, which):
+        bins = self.binsx if (which == 0) else self.binsy 
+        for ix,x in enumerate(bins):
+            if val < x:
+                return ix 
+        return len(bins)
+    def find_bin_x(self, val):
+        return self._find_bin(val, 0)
+    def find_bin_y(self, val):
+        return self._find_bin(val, 1)
+    def fill(self, x, y, z=1):
+        self._content[self.find_bin_x(x), self.find_bin_y(y)] += z 
+    def fill_array(self, x, y, weights=None):
+        mask = sanitize_mask(x)
+        mask &= sanitize_mask(y)
+        mask &= sanitize_mask(weights)
+        x_masked = x[mask]
+        y_masked = y[mask]
+        weights_masked = None if (weights is None) else weights[mask]
+        hist = np.histogram2d(x_masked, y_masked, 
+                              bins=(self.binsx, self.binsy), 
+                              weights=weights_masked, 
+                              normed=False)[0]
+        # print hist 
+        # over/underflow bins are zeroed out
+        self._content += np.lib.pad(hist, (1,1), 'constant', constant_values=0) 
+    def integral(self):
+        return np.sum(self._content)
+    def scale(self, val=None):
+        if val is None:
+            val = self.integral()
+        self._content /= val 
+    def plot(self, xlabel=None, ylabel=None, output=None, cmap=pl.cm.hot, norm=LogNorm()):
+        plt.clf()
+        plt.imshow(self._content, 
+                   extent=(self.binsx[0], self.binsx[-1], self.binsy[0], self.binsy[-1]),
+                   cmap=cmap,
+                   norm=norm)
+        if xlabel:
+            plt.xlabel(xlabel)
+        if ylabel:
+            plt.ylabel(ylabel)
+        if output:
+            print 'Creating',output
+            plt.savefig(output+'.png',bbox_inches='tight',dpi=300)
+            plt.savefig(output+'.pdf',bbox_inches='tight')
+        else:
+            plt.show()
+
+
 
 class Plotter(object):
     def __init__(self):
@@ -132,19 +210,21 @@ class Plotter(object):
     def clear(self):
         plt.clf()
         self.hists = [] 
-    def plot(self, opts):
+    def plot(self, xlabel=None, ylabel=None, output=None, errors=True):
         plt.clf()
         for hist, label, plotstyle in self.hists:
-            hist.plot({'color':plotstyle, 'label':label})
-        if 'xlabel' in opts:
-            plt.xlabel(opts['xlabel'])
-        if 'ylabel' in opts:
-            plt.ylabel(opts['ylabel'])
+            hist.plot(color=plotstyle, label=label, errors=errors)
+        if xlabel:
+            plt.xlabel(xlabel)
+        if ylabel:
+            plt.ylabel(ylabel)
         plt.legend(loc=0)
-        if 'output' in opts:
-            print 'Creating',opts['output']
-            plt.savefig(opts['output']+'.png',bbox_inches='tight',dpi=300)
-            plt.savefig(opts['output']+'.pdf',bbox_inches='tight')
+        if 'output':
+            print 'Creating',output
+            plt.savefig(output+'.png',bbox_inches='tight',dpi=300)
+            plt.savefig(output+'.pdf',bbox_inches='tight')
+        else:
+            plt.show()
 
 
 p = Plotter()
@@ -167,7 +247,7 @@ class Roccer(object):
             self.cfgs.append((sig_hists,bkg_hists,labels,plotstyles))
     def clear(self):
         self.cfgs = []
-    def plot(self, opts):
+    def plot(self, output):
         fig, ax = plt.subplots(1)
         ax.get_xaxis().set_tick_params(which='both',direction='in')
         ax.get_yaxis().set_tick_params(which='both',direction='in')
@@ -216,7 +296,7 @@ class Roccer(object):
         ax.set_yticks([0.001, 0.01,0.1,1])
         ax.set_yticklabels(['0.001','0.01','0.1','1'])
 
-        print 'Creating',opts['output']
-        plt.savefig(opts['output']+'.png',bbox_inches='tight',dpi=300)
-        plt.savefig(opts['output']+'.pdf',bbox_inches='tight')
+        print 'Creating',output
+        plt.savefig(output+'.png',bbox_inches='tight',dpi=300)
+        plt.savefig(output+'.pdf',bbox_inches='tight')
 
