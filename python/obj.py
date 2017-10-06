@@ -38,6 +38,18 @@ it ought to be on my TODO to integrate these. The data itself sits on disk, but 
 built in memory when the dataset is accessed (only once).
 '''
 
+def _global_inference_target(args):
+    counter = args[0]
+    ldata = args[1]
+    f = args[2]
+    stdout.write('%i    \r'%(counter)); stdout.flush() 
+    for _,v in ldata.iteritems():
+        v()
+    data = {k:v.data for k,v in ldata.iteritems()} 
+    inference = f(data)
+    out_name = ldata['singletons'].fpath.replace('singletons', name)
+    np.save(out_name, inference)
+
 class LazyData(object):
     def __init__(self, fpath=None, data=None, lazy=False):
         self.fpath = fpath 
@@ -46,13 +58,14 @@ class LazyData(object):
         if not lazy and data is None:
             self.__call__()  
     def __call__(self):
-        if config.DEBUG: stderr.write('Loading %s\n'%fpath)
+        if config.DEBUG: stderr.write('Loading %s\n'%self.fpath)
         stderr.flush()
-        self.data = np.nan_to_num(np.load(fpath))
+        self.data = np.nan_to_num(np.load(self.fpath))
         self.loaded = True 
     def __getitem__(self, *args):
         # not sure how to implement slicing, etc through this interface
-        self.data[*args]
+        targs = tuple(args)
+        self.data[targs]
 
 class DataObject(object):
     def __init__(self, fpaths):
@@ -139,7 +152,7 @@ class _DataCollection(object):
             for n,fs in to_add.iteritems():
                 self.objects[part][n] = DataObject(fs)
 
-    def load(self, partition, idx=-1, repartition=True, memory=True, components=None):
+    def load(self, partition, idx=-1, repartition=True, memory=True, components=None, lazy=False):
         self._current_partition = partition 
         objs = self.objects[partition]
         n_available = None 
@@ -150,7 +163,7 @@ class _DataCollection(object):
                     obj.refresh()
                 else:
                     return False 
-            obj.load(idx=idx, memory=memory, dry=dry)
+            obj.load(idx=idx, memory=memory, dry=dry, lazy=lazy)
             # print obj.last_loaded, obj.n_available, (n_available is None)
             # assert that all the loaded data has the same size
             assert(not(dry) or (n_available is None) or (obj.n_available==n_available))
@@ -185,7 +198,7 @@ class _DataCollection(object):
         gen = self.generator(components+[self.weight], partition, batch=None, lazy=False)
         while True:
             try:
-                data = next(gen).data 
+                data = {k:v.data for k,v in next(gen).iteritems()}
                 mask = f_mask(data) if f_mask else None 
                 weight = data[self.weight] if weighted else None
 
@@ -243,9 +256,9 @@ class _DataCollection(object):
 
     def infer(self, components, f, name, partition='test', ncores=1):
         gen = self.generator(components+[self.weight], partition, batch=None, lazy=(ncores>1))
+        starttime = time()
         if ncores == 1:
             counter = 0 
-            starttime = time()
             while True:
                 try:
                     stdout.write('%i (%i s)\r'%(counter, time()-starttime)); stdout.flush(); counter += 1 
@@ -257,15 +270,10 @@ class _DataCollection(object):
                 except StopIteration:
                     break 
         else:
-            l = list(gen)
-            def f(ldata):
-                ldata() 
-                data = {k:v.data for k,v in ldata.iteritems()} 
-                inference = f(data)
-                out_name = ldata['singletons'].fpath.replace('singletons', name)
-                np.save(out_name, inference)
+            l = list(enumerate(list(gen)))
+            l = [(ll[0], ll[1], f) for ll in l ]
             pool = Pool(ncores)
-            pool.map(f, l)
+            pool.map(_global_inference_target, l)
 
     def refresh(self, partitions=None):
         '''refresh
@@ -334,14 +342,15 @@ class PFSVCollection(_DataCollection):
         '''
         data = super(PFSVCollection, self).__getitem__(indices)
         data['weight'] = data[self.weight]
-        data['nP'] = np_utils.to_categorical(
-                data['singletons'].data[:,singletons[config.truth]].astype(np.int),
-                config.n_truth
-            )
-        data['nB'] = np_utils.to_categorical(
-                data['singletons'].data[:,singletons['nB']].astype(np.int),
-                10
-            )
+        if data['singletons'].loaded:
+            data['nP'] = np_utils.to_categorical(
+                    data['singletons'].data[:,singletons[config.truth]].astype(np.int),
+                    config.n_truth
+                )
+            data['nB'] = np_utils.to_categorical(
+                    data['singletons'].data[:,singletons['nB']].astype(np.int),
+                    10
+                )
         return data 
 
     def old_generator(self, partition='train', batch=5, repartition=False, mask=False):

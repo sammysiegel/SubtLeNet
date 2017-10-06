@@ -56,16 +56,16 @@ def predict2(data):
     return data['nn2']
 
 f_vars = {
-  'tau32' : (lambda x : x['singletons'][:,obj.singletons['tau32']], np.arange(0,1.2,0.01)),
-  'tau21' : (lambda x : x['singletons'][:,obj.singletons['tau21']], np.arange(0,1.2,0.01)),
-  'partonM' : (lambda x : x['singletons'][:,obj.singletons['partonM']], np.arange(0,400,5)),
-  'msd'   : (lambda x : x['singletons'][:,obj.singletons['msd']], np.arange(0.,400.,20.)),
-  'pt'    : (lambda x : x['singletons'][:,obj.singletons['pt']], np.arange(250.,1000.,50.)),
-  'shallow_t' : (lambda x : predict(x, 0), np.arange(0,1.2,0.001)),
-  'classifier_t'   : (lambda x : predict(x, 1), np.arange(0,1.2,0.001)),
-  'regularized_t'   : (lambda x : predict(x, 2), np.arange(0,1.2,0.001)),
-  'classifier_conv_t'   : (lambda x : predict_conv(x, 0), np.arange(0,1.2,0.001)),
-  'regularized_conv_t'   : (lambda x : predict_conv(x, 1), np.arange(0,1.2,0.001)),
+  'tau32' : (lambda x : x['singletons'][:,obj.singletons['tau32']], np.arange(0,1.2,0.01), r'$\tau_{32}$'),
+  'tau21' : (lambda x : x['singletons'][:,obj.singletons['tau21']], np.arange(0,1.2,0.01), r'$\tau_{21}$'),
+  'partonM' : (lambda x : x['singletons'][:,obj.singletons['partonM']], np.arange(0,400,5), 'Parton mass [GeV]'),
+  'msd'   : (lambda x : x['singletons'][:,obj.singletons['msd']], np.arange(0.,400.,20.), r'$m_{SD} [GeV]$'),
+  'pt'    : (lambda x : x['singletons'][:,obj.singletons['pt']], np.arange(250.,1000.,50.), r'$p_{T} [GeV]$'),
+  'shallow_t' : (lambda x : predict(x, 0), np.arange(0,1.2,0.001), 'Shallow classifier'),
+  'classifier_t'   : (lambda x : predict(x, 1), np.arange(0,1.2,0.001), 'LSTM'),
+  'regularized_t'   : (lambda x : predict(x, 2), np.arange(0,1.2,0.001), 'Decorrelated LSTM'),
+  'classifier_conv_t'   : (lambda x : predict_conv(x, 0), np.arange(0,1.2,0.001), 'CLSTM'),
+  'regularized_conv_t'   : (lambda x : predict_conv(x, 1), np.arange(0,1.2,0.001), 'Decorrelated CLSTM'),
 }
 
 f_vars2d = {
@@ -102,7 +102,7 @@ for k in hists['t']:
     p.add_hist(ht, '3-prong top', 'r')
     # p.add_hist(hh, '2-prong Higgs', 'b')
     p.add_hist(hq, '1-prong QCD', 'k')
-    p.plot(**{'output':OUTPUT+'unmasked_'+k})
+    p.plot(output=OUTPUT+'unmasked_'+k, xlabel=f_vars[k][2])
 
 r.clear()
 r.add_vars(hists['t'],
@@ -122,15 +122,15 @@ def f_mask(data):
 
 
 f_vars = {
-  'tau32' : (lambda x : x['singletons'][:,obj.singletons['tau32']], np.arange(0,1.2,0.01)),
-  'partonM' : (lambda x : x['singletons'][:,obj.singletons['partonM']], np.arange(0,400,5)),
-  'msd'   : (lambda x : x['singletons'][:,obj.singletons['msd']], np.arange(0.,400.,20.)),
-  'pt'    : (lambda x : x['singletons'][:,obj.singletons['pt']], np.arange(250.,1000.,50.)),
-  'shallow_t' : (lambda x : predict(x, 0), np.arange(0,1.2,0.001)),
-  'classifier_t'   : (lambda x : predict(x, 1), np.arange(0,1.2,0.001)),
-  'regularized_t'   : (lambda x : predict(x, 2), np.arange(0,1.2,0.001)),
-  'classifier_conv_t'   : (lambda x : predict_conv(x, 0), np.arange(0,1.2,0.001)),
-  'regularized_conv_t'   : (lambda x : predict_conv(x, 1), np.arange(0,1.2,0.001)),
+  'tau32' : (lambda x : x['singletons'][:,obj.singletons['tau32']], np.arange(0,1.2,0.01), r'$\tau_{32}$'),
+  'partonM' : (lambda x : x['singletons'][:,obj.singletons['partonM']], np.arange(0,400,5), 'Parton mass [GeV]'),
+  'msd'   : (lambda x : x['singletons'][:,obj.singletons['msd']], np.arange(0.,400.,20.), r'$m_{SD} [GeV]$'),
+  'pt'    : (lambda x : x['singletons'][:,obj.singletons['pt']], np.arange(250.,1000.,50.), r'$p_{T} [GeV]$'),
+  'shallow_t' : (lambda x : predict(x, 0), np.arange(0,1.2,0.001), 'Shallow classifier'),
+  'classifier_t'   : (lambda x : predict(x, 1), np.arange(0,1.2,0.001), 'LSTM'),
+  'regularized_t'   : (lambda x : predict(x, 2), np.arange(0,1.2,0.001), 'Decorrelated LSTM'),
+  'classifier_conv_t'   : (lambda x : predict_conv(x, 0), np.arange(0,1.2,0.001), 'CLSTM'),
+  'regularized_conv_t'   : (lambda x : predict_conv(x, 1), np.arange(0,1.2,0.001), 'Decorrelated CLSTM'),
  }
 
 hists = {}
@@ -149,7 +149,7 @@ for k in hists['t']:
     p.add_hist(ht, '3-prong top', 'r')
     # p.add_hist(hh, '3-prong Higgs', 'b')
     p.add_hist(hq, '1-prong QCD', 'k')
-    p.plot(**{'output':OUTPUT+'topmass_'+k})
+    p.plot(output=OUTPUT+'topmass_'+k, xlabel=f_vars[k][2])
 
 r.clear()
 r.add_vars(hists['t'],
@@ -166,42 +166,51 @@ r.plot(**{'output':OUTPUT+'topmass_top_roc'})
 # exit(0)
 
 # get the cuts
-threshold = 0.98
+thresholds = [0, 0.5, 0.75, 0.95, 0.99]
 
 def sculpting(name, f_mask):
-  h = hists['q'][name]
-  cut = 0
-  for ib in xrange(h.bins.shape[0]):
-      frac = h.integral(lo=0, hi=ib) / h.integral()
-      if frac >= threshold:
-          cut = h.bins[ib]
-          break
+    h = hists['q'][name]
+    tmp_hists = {t:{} for t in thresholds}
+    for t in thresholds:
+        cut = 0
+        for ib in xrange(h.bins.shape[0]):
+           frac = h.integral(lo=0, hi=ib) / h.integral()
+           if frac >= t:
+               cut = h.bins[ib]
+               break
+    
+        print name, cut 
+    
+        f_vars = {
+         'partonM' : (lambda x : x['singletons'][:,obj.singletons['partonM']], np.arange(0,400,5), 'Parton mass [GeV]'),
+         'msd'   : (lambda x : x['singletons'][:,obj.singletons['msd']], np.arange(0.,400.,20.), r'$m_{SD}$ [GeV]'),
+         'pt'    : (lambda x : x['singletons'][:,obj.singletons['pt']], np.arange(250.,1000.,50.), r'$p_{T} [GeV]$'),
+        }
+    
+        tmp_hists[t]['q'] = colls['q'].draw(components=components,
+                                            f_vars=f_vars, n_batches=n_batches, partition=partition, 
+                                            f_mask = lambda x : f_mask(x, cut))
+        tmp_hists[t]['t'] = colls['t'].draw(components=components,
+                                            f_vars=f_vars, n_batches=n_batches, partition=partition, 
+                                            f_mask = lambda x : f_mask(x, cut))
+    
+        for k in tmp_hists[t]['q']:
+           htop = tmp_hists[t]['t'][k]
+           hqcd = tmp_hists[t]['q'][k]
+           htop.scale() 
+           hqcd.scale()
+           p.clear()
+           p.add_hist(htop, '3-prong', 'r')
+           p.add_hist(hqcd, '1-prong', 'k')
+           p.plot(output=OUTPUT+name+('_%.2f_'%t).replace('.','p')+k, xlabel=f_vars[k][2])
 
-  print name, cut 
+    colors = utils.pl.cm.tab10(np.linspace(0,1,len(thresholds)))
+    for k in tmp_hists[thresholds[0]]['q']:
+        p.clear()
+        for i,t in enumerate(thresholds):
+            p.add_hist(tmp_hists[t]['q'][k], 'Acceptance=%.2f'%(1-t), colors[i])
+        p.plot(output=OUTPUT+name+'_progression_'+k, xlabel=f_vars[k][2])
 
-  f_vars = {
-  'partonM' : (lambda x : x['singletons'][:,obj.singletons['partonM']], np.arange(0,400,5)),
-  'msd'   : (lambda x : x['singletons'][:,obj.singletons['msd']], np.arange(0.,400.,20.)),
-  'pt'    : (lambda x : x['singletons'][:,obj.singletons['pt']], np.arange(250.,1000.,50.)),
-  }
-
-  tmp_hists = {}
-  tmp_hists['q'] = colls['q'].draw(components=components,
-                                   f_vars=f_vars, n_batches=n_batches, partition=partition, 
-                                   f_mask = lambda x : f_mask(x, cut))
-  tmp_hists['t'] = colls['t'].draw(components=components,
-                                   f_vars=f_vars, n_batches=n_batches, partition=partition, 
-                                   f_mask = lambda x : f_mask(x, cut))
-
-  for k in tmp_hists['q']:
-      htop = tmp_hists['t'][k]
-      hqcd = tmp_hists['q'][k]
-      htop.scale() 
-      hqcd.scale()
-      p.clear()
-      p.add_hist(htop, '3-prong', 'r')
-      p.add_hist(hqcd, '1-prong', 'k')
-      p.plot(**{'output':OUTPUT+name+'_'+k})
 
 def f_mask_base(data, model, cut):
     return predict(data, model) > cut
