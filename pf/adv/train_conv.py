@@ -25,7 +25,7 @@ config.truth = 'resonanceType'
 config.adversary_mask = 0
 
 ADV = 2
-NEPOCH = 2
+NEPOCH = 20
 
 ''' 
 instantiate data loaders 
@@ -45,7 +45,7 @@ data = [top, qcd]
 
 # preload some data just to get the dimensions
 data[0].objects['train']['inclusive'].load(memory=False)
-dims = data[0].objects['train']['inclusive'].data.shape 
+dims = data[0].objects['train']['inclusive'].data.data.shape 
 # obj.limit = 20
 # dims = (None, 20, 9) # override
 
