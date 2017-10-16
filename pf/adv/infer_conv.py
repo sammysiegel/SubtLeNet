@@ -21,22 +21,28 @@ import config
 
 if __name__ == '__main__':
 
-    config.n_truth = 5
-    config.truth = 'resonanceType'
+    #config.n_truth = 5
+    #config.truth = 'resonanceType'
 
     classifier = load_model('models/classifier_conv.h5')
     regularized = load_model('models/regularized_conv.h5')
 
-    basedir = '/fastscratch/snarayan/baconarrays/v12_repro/'
-    system('rm -f %s/test/*nn_conv.npy'%basedir)
+    basedir = '/fastscratch/snarayan/baconarrays/v13_repro/'
+    system('rm -f %s/test/*jesus_conv.npy'%basedir)
     coll = obj.PFSVCollection()
     coll.add_categories(['singletons','inclusive'], 
                         basedir+'/PARTITION/*CATEGORY.npy')
 
     def predict_t(data):
-        r_classifier = classifier.predict([data['inclusive']])[:,config.n_truth-1]
-        r_regularized = regularized.predict([data['inclusive']])[:,config.n_truth-1]
+        r_classifier = classifier.predict([data['inclusive']])
+        r_classifier_top = r_classifier[:,config.n_truth-1]
+        r_classifier_higgs = r_classifier[:,config.n_truth-2]
 
-        return np.vstack([r_classifier, r_regularized]).T 
+        r_regularized = regularized.predict([data['inclusive']])
+        r_regularized_top = r_regularized[:,config.n_truth-1]
+        r_regularized_higgs = r_regularized[:,config.n_truth-2]
 
-    coll.infer(['singletons', 'inclusive'], f=predict_t, name='nn_conv', partition='test', ncores=1)
+        #return np.vstack([r_classifier, r_regularized]).T 
+        return np.vstack([r_classifier_top, r_classifier_higgs, r_regularized_top, r_regularized_higgs]).T 
+
+    coll.infer(['singletons', 'inclusive'], f=predict_t, name='jesus_conv', partition='test', ncores=1)
