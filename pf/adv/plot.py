@@ -22,8 +22,7 @@ import config
 n_batches = 300
 partition = 'test'
 
-OUTPUT = '/home/bmaier/public_html/figs/badnet/akt_ordering_conv/'
-system('mkdir -p '+OUTPUT)
+OUTPUT = environ['BADNET_FIGSDIR'] 
 
 p = utils.Plotter()
 r = utils.Roccer()
