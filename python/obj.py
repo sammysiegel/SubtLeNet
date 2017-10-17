@@ -36,6 +36,8 @@ pieces, selective loading of columns, and on-the-fly analysis (e.g. reweighting,
 etc). Note that this "file system" is read-only. Writing is treated separately, although 
 it ought to be on my TODO to integrate these. The data itself sits on disk, but a datastore is
 built in memory when the dataset is accessed (only once).
+
+Author: S. Narayanan 
 '''
 
 def _global_inference_target(args):
