@@ -20,12 +20,13 @@ from adversarial import Adversary
 import obj 
 import config 
 #config.DEBUG = True
-config.n_truth = 5
-config.truth = 'resonanceType'
-config.adversary_mask = 0
+
+#config.n_truth = 5
+#config.truth = 'resonanceType'
+#config.adversary_mask = 0
 
 ADV = 2
-NEPOCH = 20
+NEPOCH = 16
 
 ''' 
 instantiate data loaders 
@@ -36,12 +37,13 @@ def make_coll(fpath):
     coll.add_categories(['singletons', 'inclusive'], fpath) 
     return coll 
 
-top = make_coll('/fastscratch/snarayan/baconarrays/v12_repro/PARTITION/ZprimeToTTJet_4_*_CATEGORY.npy')
-qcd = make_coll('/fastscratch/snarayan/baconarrays/v12_repro/PARTITION/QCD_0_*_CATEGORY.npy') 
+top = make_coll('/fastscratch/snarayan/baconarrays/v13_repro/PARTITION/ZprimeToTTJet_3_*_CATEGORY.npy')
+higgs = make_coll('/fastscratch/snarayan/baconarrays/v13_repro/PARTITION/ZprimeToA0hToA0chichihbb_2_*_CATEGORY.npy')
+qcd = make_coll('/fastscratch/snarayan/baconarrays/v13_repro/PARTITION/QCD_1_*_CATEGORY.npy') 
 #top = make_coll('testdata/PARTITION/ZprimeToTTJet_4_*_CATEGORY.npy')
 #qcd = make_coll('testdata/PARTITION/QCD_0_*_CATEGORY.npy') 
 
-data = [top, qcd]
+data = [top, higgs, qcd]
 
 # preload some data just to get the dimensions
 data[0].objects['train']['inclusive'].load(memory=False)
@@ -122,7 +124,7 @@ pivoter = Model(inputs=[inputs],
                 outputs=[y_hat]+kin_hats)
 pivoter.compile(optimizer=Adam(lr=0.001),
                 loss=['categorical_crossentropy'] + ['categorical_crossentropy' for _ in kin_hats],
-                loss_weights=[0.0001, 1])
+                loss_weights=[0.000033333, 1])
 
 print '############# ARCHITECTURE #############'
 pivoter.summary()
