@@ -8,7 +8,7 @@ import numpy as np
 import utils
 import signal
 
-from keras.layers import Input, Dense, Dropout, concatenate, LSTM, BatchNormalization, Conv1D
+from keras.layers import Input, Dense, Dropout, concatenate, LSTM, BatchNormalization, Conv1D, concatenate
 from keras.models import Model 
 from keras.callbacks import ModelCheckpoint, LambdaCallback, TensorBoard
 from keras.optimizers import Adam, SGD
@@ -26,7 +26,8 @@ import config
 #config.adversary_mask = 0
 
 ADV = 2
-NEPOCH = 16
+NEPOCH = 6
+APOSTLE = 'jebediah'
 
 ''' 
 instantiate data loaders 
@@ -60,12 +61,15 @@ first build the classifier!
 '''
 
 # set up data 
-classifier_train_gen = obj.generatePF(data, partition='train', batch=1000, normalize=False)
-classifier_validation_gen = obj.generatePF(data, partition='validate', batch=100)
-classifier_test_gen = obj.generatePF(data, partition='validate', batch=1000)
+LEARNMASS = True
+classifier_train_gen = obj.generatePF(data, partition='train', batch=1000, normalize=False, learn_mass=LEARNMASS)
+classifier_validation_gen = obj.generatePF(data, partition='validate', batch=10000, learn_mass=LEARNMASS)
+classifier_test_gen = obj.generatePF(data, partition='validate', batch=10, learn_mass=LEARNMASS)
 test_i, test_o, test_w = next(classifier_test_gen)
+#print test_i
 
 inputs  = Input(shape=(dims[1], dims[2]), name='input')
+mass_inputs = Input(shape=(1,), name='mass_input')
 norm    = BatchNormalization(momentum=0.6, name='input_bnorm')                              (inputs)
 conv = Conv1D(32, 2, activation='relu', name='conv0', kernel_initializer='lecun_uniform', padding='same')(norm)
 norm    = BatchNormalization(momentum=0.6, name='conv0_bnorm')                              (conv)
@@ -78,11 +82,21 @@ norm    = BatchNormalization(momentum=0.6,name='lstmdense_norm')                
 for i in xrange(1,5):
     dense = Dense(50, activation='relu',name='dense%i'%i)(norm)
     norm = BatchNormalization(momentum=0.6,name='dense%i_norm'%i)(dense)
-dense = Dense(50, activation='relu',name='dense5')(norm)
-norm = BatchNormalization(momentum=0.6,name='dense5_norm')(dense)
+
+if LEARNMASS:
+    merge    = concatenate([norm, mass_inputs])
+    dense = Dense(50, activation='tanh', name='dense5')(merge)
+    norm = BatchNormalization(momentum=0.6,name='dense5_norm')(dense)
+else:
+    dense = Dense(50, activation='tanh',name='dense5')(norm)
+    norm = BatchNormalization(momentum=0.6,name='dense5_norm')(dense)
+
 y_hat   = Dense(config.n_truth, activation='softmax')                                       (norm)
 
-classifier = Model(inputs=inputs, outputs=y_hat)
+if LEARNMASS:
+    classifier = Model(inputs=[inputs, mass_inputs], outputs=y_hat)
+else:
+    classifier = Model(inputs=[inputs], outputs=y_hat)
 classifier.compile(optimizer=Adam(lr=0.001),
                    loss='categorical_crossentropy',
                    metrics=['accuracy'])
@@ -96,7 +110,7 @@ pred = classifier.predict(test_i)
 
 # ctrl+C now triggers a graceful exit
 def save_classifier(name='classifier_conv', model=classifier):
-    model.save('models/%s.h5'%name)
+    model.save('models/%s_%s.h5'%(name, APOSTLE))
 
 def save_and_exit(signal=None, frame=None, name='classifier_conv', model=classifier):
     save_classifier(name, model)
@@ -111,20 +125,24 @@ now build the adversarial setup
 '''
 
 # set up data 
-opts = {'decorr_mass':True, 'decorr_pt':False}
+opts = {'decorr_mass':True, 'decorr_pt':False, 'learn_mass':LEARNMASS}
 train_gen = obj.generatePF(data, partition='train', batch=1000, normalize=False, **opts)
 validation_gen = obj.generatePF(data, partition='validate', batch=100, **opts)
 test_gen = obj.generatePF(data, partition='validate', batch=1000, **opts)
 
 # build the model 
-kin_hats = Adversary(config.n_decorr_bins, n_outputs=1, scale=0.01)(y_hat)
+kin_hats = Adversary(config.n_decorr_bins, n_outputs=1, scale=0.001)(y_hat)
 # kin_hats = Adversary(config.n_decorr_bins, n_outputs=2, scale=0.01)(y_hat)
 
-pivoter = Model(inputs=[inputs],
-                outputs=[y_hat]+kin_hats)
+if LEARNMASS:
+    pivoter = Model(inputs=[inputs, mass_inputs],
+                    outputs=[y_hat]+kin_hats)
+else:
+    pivoter = Model(inputs=[inputs],
+                    outputs=[y_hat]+kin_hats)
 pivoter.compile(optimizer=Adam(lr=0.001),
                 loss=['categorical_crossentropy'] + ['categorical_crossentropy' for _ in kin_hats],
-                loss_weights=[0.000033333, 1])
+                loss_weights=[0.0001, 1])
 
 print '############# ARCHITECTURE #############'
 pivoter.summary()

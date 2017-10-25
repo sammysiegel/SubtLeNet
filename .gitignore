@@ -92,6 +92,10 @@ ENV/
 .ropeproject
 
 
+log
 *.log
 *.h5
 *.old
+
+# vim
+*.swp

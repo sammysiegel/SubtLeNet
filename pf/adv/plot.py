@@ -19,16 +19,19 @@ import config
 #config.n_truth = 5
 #config.truth = 'resonanceType'
 
-n_batches = 300
+n_batches = 1000
 partition = 'test'
 
-OUTPUT = environ['BADNET_FIGSDIR'] 
 
 p = utils.Plotter()
 r = utils.Roccer()
 
+APOSTLE = 'luke'
+OUTPUT = environ['BADNET_FIGSDIR'] + '/' + APOSTLE + '/'
+system('mkdir -p %s'%OUTPUT)
+
 #components=['singletons', 'inclusive', 'nn1', 'nn2']
-components=['singletons', 'inclusive', 'jesus_conv']
+components=['singletons', 'inclusive', APOSTLE+'_conv']
 
 
 def make_coll(fpath):
@@ -51,7 +54,7 @@ def predict(data, model):
     return data['nn'][:,model]
 
 def predict_conv(data, model):
-    return data['jesus_conv'][:,model]
+    return data[APOSTLE+'_conv'][:,model]
    
 def predict1(data, model):
     return data['nn1'][:,model]
@@ -63,13 +66,13 @@ f_vars = {
   'tau32' : (lambda x : x['singletons'][:,obj.singletons['tau32']], np.arange(0,1.2,0.01), r'$\tau_{32}$'),
   'tau21' : (lambda x : x['singletons'][:,obj.singletons['tau21']], np.arange(0,1.2,0.01), r'$\tau_{21}$'),
   'partonM' : (lambda x : x['singletons'][:,obj.singletons['partonM']], np.arange(0,400,5), 'Parton mass [GeV]'),
-  'msd'   : (lambda x : x['singletons'][:,obj.singletons['msd']], np.arange(0.,400.,20.), r'$m_{SD} [GeV]$'),
-  'pt'    : (lambda x : x['singletons'][:,obj.singletons['pt']], np.arange(250.,1000.,50.), r'$p_{T} [GeV]$'),
+  'msd'   : (lambda x : x['singletons'][:,obj.singletons['msd']], np.arange(0.,400.,20.), r'$m_{SD}$ [GeV]'),
+  'pt'    : (lambda x : x['singletons'][:,obj.singletons['pt']], np.arange(250.,1000.,50.), r'$p_{T}$ [GeV]'),
   #'shallow_t' : (lambda x : predict(x, 0), np.arange(0,1.2,0.001), 'Shallow classifier'),
-  'classifier_conv_h'   : (lambda x : predict_conv(x, 0), np.arange(0,1.2,0.001), 'CLSTM'),
-  'classifier_conv_t'   : (lambda x : predict_conv(x, 1), np.arange(0,1.2,0.001), 'CLSTM'),
-  'regularized_conv_h'   : (lambda x : predict_conv(x, 2), np.arange(0,1.2,0.001), 'Decorrelated CLSTM'),
-  'regularized_conv_t'   : (lambda x : predict_conv(x, 3), np.arange(0,1.2,0.001), 'Decorrelated CLSTM'),
+  'classifier_conv_t'   : (lambda x : predict_conv(x, 0), np.arange(0,1.2,0.001), 'CLSTM'),
+  'classifier_conv_h'   : (lambda x : predict_conv(x, 1), np.arange(0,1.2,0.001), 'CLSTM'),
+  'regularized_conv_t'   : (lambda x : predict_conv(x, 2), np.arange(0,1.2,0.001), 'Decorrelated CLSTM'),
+  'regularized_conv_h'   : (lambda x : predict_conv(x, 3), np.arange(0,1.2,0.001), 'Decorrelated CLSTM'),
 
 
 }
@@ -87,7 +90,6 @@ f_vars2d = {
 hists = {}
 hists2d = {}
 for k,v in colls.iteritems():
-    print k
     hists[k] = v.draw(components=components,
                                  f_vars=f_vars, #f_vars2d=f_vars2d,
                                  n_batches=n_batches, partition=partition)
@@ -220,7 +222,7 @@ def sculpting(name, f_mask):
         f_vars = {
          'partonM' : (lambda x : x['singletons'][:,obj.singletons['partonM']], np.arange(0,400,5), 'Parton mass [GeV]'),
          'msd'   : (lambda x : x['singletons'][:,obj.singletons['msd']], np.arange(0.,400.,20.), r'$m_{SD}$ [GeV]'),
-         'pt'    : (lambda x : x['singletons'][:,obj.singletons['pt']], np.arange(250.,1000.,50.), r'$p_{T} [GeV]$'),
+         'pt'    : (lambda x : x['singletons'][:,obj.singletons['pt']], np.arange(250.,1000.,50.), r'$p_{T}$ [GeV]'),
         }
     
         tmp_hists[t]['q'] = colls['q'].draw(components=components,
@@ -238,6 +240,7 @@ def sculpting(name, f_mask):
            hhiggs = tmp_hists[t]['h'][k]
            hqcd = tmp_hists[t]['q'][k]
            htop.scale() 
+           hhiggs.scale()
            hqcd.scale()
            p.clear()
            p.add_hist(htop, '3-prong', 'r')
@@ -258,11 +261,11 @@ def f_mask_base(data, model, cut):
 def f_mask_conv_base(data, model, cut):
     return predict_conv(data, model) > cut
 
-sculpting('regularized_conv_h', f_mask = lambda d, c : f_mask_conv_base(d, 2, c))
-sculpting('regularized_conv_t', f_mask = lambda d, c : f_mask_conv_base(d, 3, c))
+sculpting('regularized_conv_t', f_mask = lambda d, c : f_mask_conv_base(d, 2, c))
+sculpting('regularized_conv_h', f_mask = lambda d, c : f_mask_conv_base(d, 3, c))
 #sculpting('classifier_t', f_mask = lambda d, c : f_mask_base(d, 1, c))
-sculpting('classifier_conv_h', f_mask = lambda d, c : f_mask_conv_base(d, 0, c))
-sculpting('classifier_conv_t', f_mask = lambda d, c : f_mask_conv_base(d, 1, c))
+sculpting('classifier_conv_t', f_mask = lambda d, c : f_mask_conv_base(d, 0, c))
+sculpting('classifier_conv_h', f_mask = lambda d, c : f_mask_conv_base(d, 1, c))
 #sculpting('regularized_t', f_mask = lambda d, c : f_mask_base(d, 2, c))
 #sculpting('shallow_t', f_mask = lambda d, c : f_mask_base(d, 0, c))
 

@@ -491,7 +491,7 @@ def generateSingletons(collections, variables, partition='train', batch=32,
 
 def generatePF(collections, partition='train', batch=32, 
                repartition=True, mask=False, decorr_mass=False, decorr_pt=False,
-               normalize=False):
+               normalize=False, learn_mass=False):
     small_batch = max(1, int(batch / len(collections)))
     generators = {c:c.generator(components=['singletons', 'inclusive', c.weight],
                                         partition=partition, 
@@ -519,9 +519,12 @@ def generatePF(collections, partition='train', batch=32,
         for c in collections:
             data = {k:v.data for k,v in next(generators[c]).iteritems()}
             if limit:
-                inputs.append([data['inclusive'][:,:limit,:]])
+                i = [data['inclusive'][:,:limit,:]]
             else:
-                inputs.append([data['inclusive']])
+                i = [data['inclusive']]
+            if learn_mass:
+                i.append(data['singletons'][:,msd_index] / config.max_mass)
+            inputs.append(i)
             
             nprongs = np_utils.to_categorical(data['singletons'][:,prongs_index], config.n_truth)
             o = [nprongs]
@@ -541,7 +544,8 @@ def generatePF(collections, partition='train', batch=32,
             weights.append(w)
 
         merged_inputs = []
-        for j in xrange(1):
+        NINPUTS = 1 + int(learn_mass)
+        for j in xrange(NINPUTS):
             merged_inputs.append(np.concatenate([v[j] for v in inputs], axis=0))
 
         merged_outputs = []
