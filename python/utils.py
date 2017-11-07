@@ -1,6 +1,5 @@
 import numpy as np 
 from collections import namedtuple
-from scipy.interpolate import interp1d
 
 import matplotlib as mpl
 mpl.use('cairo')
@@ -51,8 +50,9 @@ class NH1(object):
         mask &= sanitize_mask(weights)
         x_masked = x[mask]
         weights_masked = None if (weights is None) else weights[mask]
+        w2 = None if (weights_masked is None) else np.square(weights_masked)
         hist = np.histogram(x_masked, bins=self.bins, weights=weights_masked, density=False)[0]
-        herr = np.histogram(x_masked, bins=self.bins, weights=np.square(weights_masked), density=False)[0]
+        herr = np.histogram(x_masked, bins=self.bins, weights=w2, density=False)[0]
         self._content += np.concatenate([[0],hist,[0]])
         self._sumw2 += np.concatenate([[0],herr,[0]])
     def add_array(self, arr):
@@ -151,8 +151,9 @@ class NH2(object):
         self.binsx = binsx 
         self.binsy = binsy 
         self._content = np.zeros([len(binsx)+1, len(binsy)+1], dtype=np.float64)
-    def _find_bin(self, val, which):
-        bins = self.binsx if (which == 0) else self.binsy 
+        self._sumw2 = np.zeros([len(binsx)+1, len(binsy)+1], dtype=np.float64)
+    def _find_bin(self, val, axis):
+        bins = self.binsx if (axis == 0) else self.binsy 
         for ix,x in enumerate(bins):
             if val < x:
                 return ix 
@@ -161,8 +162,35 @@ class NH2(object):
         return self._find_bin(val, 0)
     def find_bin_y(self, val):
         return self._find_bin(val, 1)
+    def _project(self, onto_axis, min_bin=None, max_bin=None):
+        bins = self.binsx if (onto_axis == 0) else self.binsy 
+        integrate_axis = int(not(onto_axis))
+        h1 = NH1(bins)
+        if integrate_axis == 0:
+            s = self._content[min_bin:max_bin,:]
+            e = self._sumw2[min_bin:max_bin,:]
+        else:
+            s = self._content[:,min_bin:max_bin]
+            e = self._sumw2[:,min_bin:max_bin]
+        proj = np.sum(s, axis=integrate_axis)
+        proj_e = np.sum(e, axis=integrate_axis)
+        h1._content = proj
+        h1._sumw2 = proj_e
+        return h1
+    def _project_by_val(self, onto_axis, min_bin=None, min_cut=None, max_bin=None, max_cut=None):
+        integrate_axis = int(not(onto_axis))
+        if min_cut:
+            min_bin = self._find_bin(min_cut, integrate_axis)
+        if max_cut:
+            max_bin = self._find_bin(max_cut, integrate_axis)
+        return self._project(onto_axis, min_bin, max_bin)
+    def project_onto_x(self, *args, **kwargs):
+        return self._project_by_val(0, *args, **kwargs)
+    def project_onto_y(self, *args, **kwargs):
+        return self._project_by_val(1, *args, **kwargs)
     def fill(self, x, y, z=1):
         self._content[self.find_bin_x(x), self.find_bin_y(y)] += z 
+        self._sumw2[self.find_bin_x(x), self.find_bin_y(y)] += pow(z, 2)
     def fill_array(self, x, y, weights=None):
         mask = sanitize_mask(x)
         mask &= sanitize_mask(y)
@@ -174,9 +202,15 @@ class NH2(object):
                               bins=(self.binsx, self.binsy), 
                               weights=weights_masked, 
                               normed=False)[0]
+        w2 = None if (weights_masked is None) else np.square(weights_masked)
+        herr = np.histogram2d(x_masked, y_masked, 
+                              bins=(self.binsx, self.binsy), 
+                              weights=w2, 
+                              normed=False)[0]
         # print hist 
         # over/underflow bins are zeroed out
         self._content += np.lib.pad(hist, (1,1), 'constant', constant_values=0) 
+        self._sumw2 += np.lib.pad(herr, (1,1), 'constant', constant_values=0) 
     def integral(self):
         return np.sum(self._content)
     def scale(self, val=None):
@@ -185,17 +219,20 @@ class NH2(object):
         self._content /= val 
     def plot(self, xlabel=None, ylabel=None, output=None, cmap=pl.cm.hot, norm=LogNorm()):
         plt.clf()
-        plt.imshow(self._content, 
+        ax = plt.gca()
+        ax.grid(True,ls='-.',lw=0.4,zorder=-99,color='gray',alpha=0.7,which='both')
+        plt.imshow(self._content[1:-1,1:-1].T, 
                    extent=(self.binsx[0], self.binsx[-1], self.binsy[0], self.binsy[-1]),
-                   cmap=cmap,
-                   norm=norm)
+                   aspect=(self.binsx[-1]-self.binsx[0])/(self.binsy[-1]-self.binsy[0]),
+                  # cmap=cmap,
+                   )
         if xlabel:
             plt.xlabel(xlabel)
         if ylabel:
             plt.ylabel(ylabel)
         if output:
             print 'Creating',output
-            plt.savefig(output+'.png',bbox_inches='tight',dpi=300)
+            plt.savefig(output+'.png',bbox_inches='tight',dpi=100)
             plt.savefig(output+'.pdf',bbox_inches='tight')
         else:
             plt.show()

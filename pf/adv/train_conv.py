@@ -1,6 +1,6 @@
 #!/usr/local/bin/python2.7
 
-from sys import exit 
+from sys import exit, stdout
 from os import environ, system
 environ['KERAS_BACKEND'] = 'tensorflow'
 
@@ -26,8 +26,8 @@ import config
 #config.adversary_mask = 0
 
 ADV = 2
-NEPOCH = 6
-APOSTLE = 'jebediah'
+NEPOCH = 8
+APOSTLE = 'abel'
 
 ''' 
 instantiate data loaders 
@@ -44,7 +44,9 @@ qcd = make_coll('/fastscratch/snarayan/baconarrays/v13_repro/PARTITION/QCD_1_*_C
 #top = make_coll('testdata/PARTITION/ZprimeToTTJet_4_*_CATEGORY.npy')
 #qcd = make_coll('testdata/PARTITION/QCD_0_*_CATEGORY.npy') 
 
-data = [top, higgs, qcd]
+#data = [top, higgs, qcd]
+data = [top, qcd]
+#data = [higgs, qcd]
 
 # preload some data just to get the dimensions
 data[0].objects['train']['inclusive'].load(memory=False)
@@ -62,14 +64,17 @@ first build the classifier!
 
 # set up data 
 LEARNMASS = True
-classifier_train_gen = obj.generatePF(data, partition='train', batch=1000, normalize=False, learn_mass=LEARNMASS)
-classifier_validation_gen = obj.generatePF(data, partition='validate', batch=10000, learn_mass=LEARNMASS)
-classifier_test_gen = obj.generatePF(data, partition='validate', batch=10, learn_mass=LEARNMASS)
+LEARNPT = True
+opts = {'decorr_mass':False, 'decorr_pt':False, 'learn_mass':LEARNMASS, 'learn_pt':LEARNPT}
+classifier_train_gen = obj.generatePF(data, partition='train', batch=1000, normalize=False, **opts)
+classifier_validation_gen = obj.generatePF(data, partition='validate', batch=10000, **opts)
+classifier_test_gen = obj.generatePF(data, partition='validate', batch=10, **opts)
 test_i, test_o, test_w = next(classifier_test_gen)
 #print test_i
 
 inputs  = Input(shape=(dims[1], dims[2]), name='input')
 mass_inputs = Input(shape=(1,), name='mass_input')
+pt_inputs = Input(shape=(1,), name='pt_input')
 norm    = BatchNormalization(momentum=0.6, name='input_bnorm')                              (inputs)
 conv = Conv1D(32, 2, activation='relu', name='conv0', kernel_initializer='lecun_uniform', padding='same')(norm)
 norm    = BatchNormalization(momentum=0.6, name='conv0_bnorm')                              (conv)
@@ -83,20 +88,29 @@ for i in xrange(1,5):
     dense = Dense(50, activation='relu',name='dense%i'%i)(norm)
     norm = BatchNormalization(momentum=0.6,name='dense%i_norm'%i)(dense)
 
-if LEARNMASS:
-    merge    = concatenate([norm, mass_inputs])
-    dense = Dense(50, activation='tanh', name='dense5')(merge)
-    norm = BatchNormalization(momentum=0.6,name='dense5_norm')(dense)
+if LEARNMASS or LEARNPT:
+    to_merge = [norm]
+    if LEARNMASS:
+        to_merge.append(mass_inputs)
+    if LEARNPT:
+        to_merge.append(pt_inputs)
+    merge    = concatenate(to_merge)
+    dense = Dense(50, activation='tanh', name='dense5a')(merge)
+    norm = BatchNormalization(momentum=0.6,name='dense5a_norm')(dense)
+    # dense = Dense(50, activation='tanh', name='dense5')(norm)
+    # norm = BatchNormalization(momentum=0.6,name='dense5_norm')(dense)
 else:
     dense = Dense(50, activation='tanh',name='dense5')(norm)
     norm = BatchNormalization(momentum=0.6,name='dense5_norm')(dense)
 
 y_hat   = Dense(config.n_truth, activation='softmax')                                       (norm)
 
+i = [inputs]
 if LEARNMASS:
-    classifier = Model(inputs=[inputs, mass_inputs], outputs=y_hat)
-else:
-    classifier = Model(inputs=[inputs], outputs=y_hat)
+    i.append(mass_inputs)
+if LEARNPT:
+    i.append(pt_inputs)
+classifier = Model(inputs=i, outputs=y_hat)
 classifier.compile(optimizer=Adam(lr=0.001),
                    loss='categorical_crossentropy',
                    metrics=['accuracy'])
@@ -125,24 +139,25 @@ now build the adversarial setup
 '''
 
 # set up data 
-opts = {'decorr_mass':True, 'decorr_pt':False, 'learn_mass':LEARNMASS}
+opts = {'decorr_mass':True, 'decorr_pt':True, 'learn_mass':LEARNMASS, 'learn_pt':LEARNPT}
 train_gen = obj.generatePF(data, partition='train', batch=1000, normalize=False, **opts)
 validation_gen = obj.generatePF(data, partition='validate', batch=100, **opts)
 test_gen = obj.generatePF(data, partition='validate', batch=1000, **opts)
 
 # build the model 
-kin_hats = Adversary(config.n_decorr_bins, n_outputs=1, scale=0.001)(y_hat)
+kin_hats = Adversary(config.n_decorr_bins, n_outputs=2, scale=0.0001)(y_hat)
 # kin_hats = Adversary(config.n_decorr_bins, n_outputs=2, scale=0.01)(y_hat)
 
+i = [inputs]
 if LEARNMASS:
-    pivoter = Model(inputs=[inputs, mass_inputs],
-                    outputs=[y_hat]+kin_hats)
-else:
-    pivoter = Model(inputs=[inputs],
-                    outputs=[y_hat]+kin_hats)
+    i.append(mass_inputs)
+if LEARNPT:
+    i.append(pt_inputs)
+pivoter = Model(inputs=i,
+                outputs=[y_hat]+kin_hats)
 pivoter.compile(optimizer=Adam(lr=0.001),
                 loss=['categorical_crossentropy'] + ['categorical_crossentropy' for _ in kin_hats],
-                loss_weights=[0.0001, 1])
+                loss_weights=[0.0001, 50, 100])
 
 print '############# ARCHITECTURE #############'
 pivoter.summary()
@@ -154,10 +169,11 @@ Now we train both models
 
 if ADV > 0:
     print 'TRAINING ADVERSARIAL NETWORK'
-    system('mv logs/train_lstm.log logs/train_lstm.log.old')
-    flog = open('logs/train_conv.log','w')
+    system('mv logs/train_conv_adv.log logs/train_conv_adv.log.old')
+    flog = open('logs/train_conv_adv.log','w')
     callback = LambdaCallback(
-        on_batch_end=lambda batch, logs: flog.write('batch=%i,logs=%s\n'%(batch,str(logs)))
+        on_batch_end=lambda batch, logs: flog.write('%i,%f,%f,%f,%f\n'%(batch,logs['loss'],logs['dense_6_loss'],logs['dense_7_loss'],logs['dense_1_loss'])),
+        on_epoch_end=lambda epoch, logs: save_classifier(name='regularized_conv')
     )
 
     tb = TensorBoard(
@@ -189,9 +205,10 @@ if ADV > 0:
     pivoter.fit_generator(train_gen, 
                           steps_per_epoch=5000,
                           epochs=NEPOCH*2,
-                          # callbacks=[callback, tb],
-                          validation_data=validation_gen,
-                          validation_steps=100)
+                          callbacks=[callback],
+                        #  validation_data=validation_gen,
+                        #  validation_steps=100
+                         )
 
 
     save_classifier(name='regularized_conv')
@@ -201,10 +218,11 @@ if ADV > 0:
 if ADV % 2 == 0:
     print 'TRAINING CLASSIFIER ONLY'
 
-    system('mv logs/train_lstmnoreg.log logs/train_lstmnoreg.log.old')
-    flog = open('logs/train_lstmnoreg.log','w')
+    system('mv logs/train_conv.log logs/train_conv.log.old')
+    flog = open('logs/train_conv.log','w')
     callback = LambdaCallback(
-        on_batch_end=lambda batch, logs: flog.write('batch=%i,logs=%s\n'%(batch,str(logs)))
+        on_batch_end=lambda batch, logs: flog.write('%i,%f\n'%(batch,logs['loss'])),
+        on_epoch_end=lambda epoch, logs: save_classifier(name='classifier_conv')
     )
 
     tb = TensorBoard(
@@ -215,13 +233,20 @@ if ADV % 2 == 0:
 
     n_epochs = 1 if (ADV == 2) else 2 # fewer epochs if network is pretrained
     n_epochs *= NEPOCH
+
+    def save_and_exit(signal=None, frame=None, name='classifier_conv', model=classifier):
+        save_classifier(name, model)
+        flog.close()
+        exit(1)
+    signal.signal(signal.SIGINT, save_and_exit)
     
     classifier.fit_generator(classifier_train_gen, 
                              steps_per_epoch=5000, 
                              epochs=n_epochs,
-                             # callbacks=[callback, tb],
-                             validation_data=classifier_validation_gen,
-                             validation_steps=100)
+                             callbacks=[callback],
+                           #  validation_data=classifier_validation_gen,
+                           #  validation_steps=100
+                            )
 
 
     save_classifier(name='classifier_conv')

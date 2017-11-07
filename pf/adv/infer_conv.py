@@ -18,7 +18,7 @@ from keras.utils import np_utils
 import obj 
 import config 
 # config.DEBUG = True
-APOSTLE = 'luke'
+APOSTLE = 'abel'
 
 if __name__ == '__main__':
 
@@ -36,11 +36,15 @@ if __name__ == '__main__':
 
     def predict_t(data):
         msd_idx = obj.singletons['msd']
-        r_classifier = classifier.predict([data['inclusive'], data['singletons'][:,msd_idx] / config.max_mass])
+        pt_idx = obj.singletons['pt']
+        inclusive = data['inclusive']
+        msd = data['singletons'][:,msd_idx] / config.max_mass 
+        pt = (data['singletons'][:,pt_idx] - config.min_pt) / config.max_pt
+        r_classifier = classifier.predict([inclusive, msd, pt])
         r_classifier_top = r_classifier[:,config.n_truth-1]
         r_classifier_higgs = r_classifier[:,config.n_truth-2]
 
-        r_regularized = regularized.predict([data['inclusive'], data['singletons'][:,msd_idx] / config.max_mass])
+        r_regularized = regularized.predict([inclusive, msd, pt])
         r_regularized_top = r_regularized[:,config.n_truth-1]
         r_regularized_higgs = r_regularized[:,config.n_truth-2]
 

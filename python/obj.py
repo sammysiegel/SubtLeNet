@@ -315,6 +315,15 @@ class _DataCollection(object):
                         lo = ib * batch 
                         hi = min(N, (ib + 1) * batch)
                         to_yield = {k:LazyData(data=v.data[lo:hi], lazy=True) for k,v in ldata.iteritems()}
+                        
+                        tyv = to_yield.values()
+                        sanity_N = tyv[0].data.shape[0]
+                        for k,v in to_yield.iteritems():
+                            if type(v.data) != np.ndarray:
+                                continue
+                            if v.data.shape[0] != sanity_N:
+                                raise ValueError('Expected %i, got %i, somewhere in %s'%( sanity_N, v.data.shape[0], self.objects[partition]['singletons'].last_loaded))
+
                         yield to_yield 
                 else:
                     yield ldata 
@@ -491,7 +500,7 @@ def generateSingletons(collections, variables, partition='train', batch=32,
 
 def generatePF(collections, partition='train', batch=32, 
                repartition=True, mask=False, decorr_mass=False, decorr_pt=False,
-               normalize=False, learn_mass=False):
+               normalize=False, learn_mass=False, learn_pt=False):
     small_batch = max(1, int(batch / len(collections)))
     generators = {c:c.generator(components=['singletons', 'inclusive', c.weight],
                                         partition=partition, 
@@ -523,7 +532,9 @@ def generatePF(collections, partition='train', batch=32,
             else:
                 i = [data['inclusive']]
             if learn_mass:
-                i.append(data['singletons'][:,msd_index] / config.max_mass)
+                i.append(data['singletons'][:,msd_index] * mass_norm_factor)
+            if learn_pt:
+                i.append((data['singletons'][:,pt_index] - config.min_pt) * pt_norm_factor)
             inputs.append(i)
             
             nprongs = np_utils.to_categorical(data['singletons'][:,prongs_index], config.n_truth)
@@ -544,7 +555,7 @@ def generatePF(collections, partition='train', batch=32,
             weights.append(w)
 
         merged_inputs = []
-        NINPUTS = 1 + int(learn_mass)
+        NINPUTS = 1 + int(learn_mass) + int(learn_pt)
         for j in xrange(NINPUTS):
             merged_inputs.append(np.concatenate([v[j] for v in inputs], axis=0))
 
