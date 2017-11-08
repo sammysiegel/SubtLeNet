@@ -23,6 +23,7 @@ plt.rcParams['figure.figsize'] = fig_size
 def sanitize_mask(x):
     return x==x
 
+lognorm = LogNorm()
 
 class NH1(object):
     def __init__(self, bins=[0,1]):
@@ -217,15 +218,17 @@ class NH2(object):
         if val is None:
             val = self.integral()
         self._content /= val 
-    def plot(self, xlabel=None, ylabel=None, output=None, cmap=pl.cm.hot, norm=LogNorm()):
+    def plot(self, xlabel=None, ylabel=None, output=None, cmap=pl.cm.hot, norm=None):
         plt.clf()
         ax = plt.gca()
         ax.grid(True,ls='-.',lw=0.4,zorder=-99,color='gray',alpha=0.7,which='both')
         plt.imshow(self._content[1:-1,1:-1].T, 
                    extent=(self.binsx[0], self.binsx[-1], self.binsy[0], self.binsy[-1]),
                    aspect=(self.binsx[-1]-self.binsx[0])/(self.binsy[-1]-self.binsy[0]),
-                  # cmap=cmap,
-                   )
+                   cmap=cmap,
+                   norm=norm,
+                  )
+        plt.colorbar()
         if xlabel:
             plt.xlabel(xlabel)
         if ylabel:
@@ -247,7 +250,7 @@ class Plotter(object):
     def clear(self):
         plt.clf()
         self.hists = [] 
-    def plot(self, xlabel=None, ylabel=None, output=None, errors=True):
+    def plot(self, xlabel=None, ylabel=None, output=None, errors=True, logy=False):
         plt.clf()
         for hist, label, plotstyle in self.hists:
             hist.plot(color=plotstyle, label=label, errors=errors)
@@ -255,10 +258,12 @@ class Plotter(object):
             plt.xlabel(xlabel)
         if ylabel:
             plt.ylabel(ylabel)
+        if logy:
+            plt.yscale('log', nonposy='clip')
         plt.legend(loc=0)
         if 'output':
             print 'Creating',output
-            plt.savefig(output+'.png',bbox_inches='tight',dpi=300)
+            plt.savefig(output+'.png',bbox_inches='tight',dpi=100)
             plt.savefig(output+'.pdf',bbox_inches='tight')
         else:
             plt.show()
