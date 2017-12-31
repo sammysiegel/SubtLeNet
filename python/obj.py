@@ -15,9 +15,12 @@ from multiprocessing import Process, Pool
 
 _partitions = ['train', 'test', 'validate']
 
-_singletons = ['pt','eta','mass','msd','rho','tau32','tau21','flavour',
-               'nbHadrons','nProngs','nResonanceProngs','resonanceType',
-               'nB','nC','partonPt','partonEta','partonPhi','partonM']
+#_singletons = ['pt','eta','mass','msd','rho','tau32','tau21','flavour',
+#               'nbHadrons','nProngs','nResonanceProngs','resonanceType',
+#               'nB','nC','partonPt','partonEta','partonPhi','partonM']
+_singletons = ['msd','pt', 'rawpt', 'eta', 'phi',
+                'partonM', 'partonPt', 'partonEta', 'nPartons']
+
 singletons = {_singletons[x]:x for x in xrange(len(_singletons))}
 
 _gen_singletons = ['pt', 'eta', 'mass', 't21', 't32', 
