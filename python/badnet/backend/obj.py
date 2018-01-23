@@ -38,6 +38,7 @@ def _global_inference_target(args):
     np.save(out_name, inference)
 
 class LazyData(object):
+    __slots__ = ['fpath','data','loaded']
     def __init__(self, fpath=None, data=None, lazy=False):
         self.fpath = fpath 
         self.data = data
@@ -45,8 +46,9 @@ class LazyData(object):
         if not lazy and data is None:
             self.__call__()  
     def __call__(self):
-        if config.DEBUG: stderr.write('Loading %s\n'%self.fpath)
-        stderr.flush()
+        if config.DEBUG: 
+            stderr.write('Loading %s\n'%self.fpath)
+            stderr.flush()
         self.data = np.nan_to_num(np.load(self.fpath))
         self.loaded = True 
     def __getitem__(self, *args):
@@ -152,9 +154,9 @@ class _DataCollection(object):
             dry = (components and (name not in components))
             if obj.is_empty():
                 if repartition:
-#                    print '_DataCollection.load: repartitioning %s, %s!'%(
-#                                 self.fpath.replace('PARTITION',partition),name
-#                            )
+                    print '_DataCollection.load: repartitioning %s, %s!'%(
+                                 self.fpath.replace('PARTITION',partition),name
+                            )
                     obj.refresh()
                 else:
                     return False 

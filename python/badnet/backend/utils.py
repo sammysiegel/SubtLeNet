@@ -26,6 +26,7 @@ def sanitize_mask(x):
 lognorm = LogNorm()
 
 class NH1(object):
+    __slots__ = ['bins','_content','_sumw2']
     def __init__(self, bins=[0,1]):
         assert(len(bins) > 1)
         self.bins = np.array(bins )
@@ -148,6 +149,7 @@ class NH1(object):
 
 
 class NH2(object):
+    __slots__ = ['binsx','binsy','_content','_sumw2']
     def __init__(self, binsx, binsy):
         self.binsx = binsx 
         self.binsy = binsy 
