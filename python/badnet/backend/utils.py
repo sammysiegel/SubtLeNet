@@ -6,12 +6,12 @@ mpl.use('cairo')
 import matplotlib.pylab as pl 
 from matplotlib.colors import LogNorm 
 from matplotlib import pyplot as plt
-import seaborn
+#import seaborn
 
 
 ## general layout                                                                                                                      
-seaborn.set(style="ticks")
-seaborn.set_context("poster")
+#seaborn.set(style="ticks")
+#seaborn.set_context("poster")
 mpl.rcParams['axes.linewidth'] = 1.25
 fig_size = plt.rcParams['figure.figsize']
 fig_size[0] = 10
@@ -330,7 +330,7 @@ class Roccer(object):
                 color += plotstyle 
             plt.plot(epsilons_sig, epsilons_bkg, color=color, label=label,linewidth=2)
 
-        plt.axis([0,1,0.0001,1])
+        plt.axis([0,1,0.0005,1])
         plt.yscale('log', nonposy='clip')
         plt.legend(loc=4, fontsize=22)
         plt.ylabel('Background fake rate', fontsize=24)

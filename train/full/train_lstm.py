@@ -19,9 +19,9 @@ K.set_image_data_format('channels_last')
 from adversarial import Adversary
 import obj 
 import config 
-#config.DEBUG = True
-config.n_truth = 5
-config.truth = 'resonanceType'
+config.DEBUG = True
+#config.n_truth = 5
+#config.truth = 'resonanceType'
 config.adversary_mask = 0
 
 ADV = 2
@@ -33,19 +33,17 @@ instantiate data loaders
 
 def make_coll(fpath):
     coll = obj.PFSVCollection()
-    coll.add_categories(['singletons', 'inclusive'], fpath) 
+    coll.add_categories(['singletons', 'pf'], fpath) 
     return coll 
 
-top = make_coll('/fastscratch/snarayan/baconarrays/v12_repro/PARTITION/ZprimeToTTJet_4_*_CATEGORY.npy')
-qcd = make_coll('/fastscratch/snarayan/baconarrays/v12_repro/PARTITION/QCD_0_*_CATEGORY.npy') 
-#top = make_coll('testdata/PARTITION/ZprimeToTTJet_4_*_CATEGORY.npy')
-#qcd = make_coll('testdata/PARTITION/QCD_0_*_CATEGORY.npy') 
+top = make_coll('/fastscratch/snarayan/pandaarrays/v1//PARTITION/ZpTT_*_CATEGORY.npy')
+qcd = make_coll('/fastscratch/snarayan/pandaarrays/v1//PARTITION/QCD_*_CATEGORY.npy')
 
 data = [top, qcd]
 
 # preload some data just to get the dimensions
-data[0].objects['train']['inclusive'].load(memory=False)
-dims = data[0].objects['train']['inclusive'].data.shape 
+data[0].objects['train']['pf'].load(memory=False)
+dims = data[0].objects['train']['pf'].data.data.shape 
 # obj.limit = 20
 # dims = (None, 20, 9) # override
 

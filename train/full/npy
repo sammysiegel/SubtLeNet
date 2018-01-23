@@ -1,0 +1,28 @@
+#!/usr/local/bin/python2.7
+
+import readline
+import code
+import numpy as np
+from sys import argv 
+from argparse import ArgumentParser 
+
+parser = ArgumentParser(description='numpy load')
+parser.add_argument('--verbose', action='store_true')
+parser.add_argument('--python', action='store_true')
+parser.add_argument('files', type=str, nargs='+')
+args = parser.parse_args()
+
+data = {}
+for fpath in args.files:
+    data[fpath] = np.load(fpath)
+    if args.verbose:
+        print fpath
+
+if args.python:
+    vars = globals().copy()
+    vars.update(locals())
+    shell = code.InteractiveConsole(vars)
+    shell.interact()
+else:
+    from IPython import embed
+    embed()
