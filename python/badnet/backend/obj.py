@@ -8,7 +8,7 @@ from math import floor
 from time import time 
 from multiprocessing import Process, Pool
 
-import badnet.config as config
+from badnet import config
 from utils import NH1,NH2
 
 _partitions = ['train', 'test', 'validate']

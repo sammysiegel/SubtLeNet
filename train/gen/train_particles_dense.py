@@ -31,7 +31,8 @@ config.limit = 50
 ''' 
 instantiate data loaders 
 ''' 
-basedir = '/fastscratch/snarayan/genarrays/v_deepgen_0'
+#basedir = '/fastscratch/snarayan/genarrays/v_deepgen_0'
+basedir = '/data/t3serv014/snarayan/deep/v_deepgen_0/'
 top = make_coll(basedir + '/PARTITION/Top_*_CATEGORY.npy')
 hig = make_coll(basedir + '/PARTITION/Higgs_*_CATEGORY.npy')
 qcd = make_coll(basedir + '/PARTITION/QCD_*_CATEGORY.npy')
