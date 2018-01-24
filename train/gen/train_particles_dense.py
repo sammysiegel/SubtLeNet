@@ -7,7 +7,7 @@ environ['KERAS_BACKEND'] = 'tensorflow'
 import numpy as np
 import signal
 
-from keras.layers import Input, Dense, Dropout, concatenate, LSTM, BatchNormalization, Conv1D, concatenate
+from keras.layers import Input, Dense, Dropout, concatenate, LSTM, BatchNormalization, Conv1D, Flatten
 from keras.models import Model 
 from keras.callbacks import ModelCheckpoint, LambdaCallback, TensorBoard
 from keras.optimizers import Adam, SGD
@@ -24,7 +24,7 @@ some global definitions
 
 NEPOCH = 10
 APOSTLE = 'v1'
-system('cp %s particle_models/train_%s.py'%(argv[0], APOSTLE))
+system('cp %s particle_dense_models/train_%s.py'%(argv[0], APOSTLE))
 config.limit = 50
 #config.DEBUG = True
 
@@ -67,14 +67,13 @@ inputs = [input_particles, input_mass, input_pt]
 # now build the particle network
 h = BatchNormalization(momentum=0.6, name='particles_input_bnorm')(input_particles)
 h = Conv1D(32, 2, activation='relu', name='particles_conv0', kernel_initializer='lecun_uniform', padding='same')(h)
-h = BatchNormalization(momentum=0.6, name='particles_conv0_bnorm')(h)
 h = Conv1D(16, 4, activation='relu', name='particles_conv1', kernel_initializer='lecun_uniform', padding='same')(h)
-h = BatchNormalization(momentum=0.6, name='particles_conv1_bnorm')(h)
-h = LSTM(100, go_backwards=True, implementation=2, name='particles_lstm')(h)
+h = Flatten()(h)
+h = Dense(1000, activation='relu')(h)
 h = Dropout(0.1)(h)
-h = BatchNormalization(momentum=0.6, name='particles_lstm_norm')(h)
-h = Dense(100, activation='relu',name='particles_lstm_dense',kernel_initializer='lecun_uniform')(h)
-particles_final = BatchNormalization(momentum=0.6,name='particles_lstm_dense_norm')(h)
+h = Dense(500, activation='relu')(h)
+h = Dropout(0.1)(h)
+particles_final = BatchNormalization(momentum=0.6,name='particles_dense_norm')(h)
 
 # merge everything
 to_merge = [particles_final, input_mass, input_pt]
@@ -101,7 +100,7 @@ print '###################################'
 
 # ctrl+C now triggers a graceful exit
 def save_classifier(name='classifier', model=classifier):
-    model.save('particle_models/%s_%s.h5'%(name, APOSTLE))
+    model.save('particle_dense_models/%s_%s.h5'%(name, APOSTLE))
 
 def save_and_exit(signal=None, frame=None, name='classifier', model=classifier):
     save_classifier(name, model)
@@ -115,7 +114,7 @@ classifier.fit_generator(classifier_train_gen,
                          epochs=NEPOCH,
                          validation_data=classifier_validation_gen,
                          validation_steps=1000,
-                         callbacks = [ModelCheckpoint('particle_models/classifier_conv_%s_{epoch:02d}_{val_loss:.5f}.h5'%APOSTLE)],
+                         callbacks = [ModelCheckpoint('particle_dense_models/classifier_conv_%s_{epoch:02d}_{val_loss:.5f}.h5'%APOSTLE)],
                         )
 save_classifier()
 
