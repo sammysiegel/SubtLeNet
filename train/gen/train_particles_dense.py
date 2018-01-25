@@ -15,8 +15,8 @@ from keras.utils import np_utils
 from keras import backend as K
 K.set_image_data_format('channels_last')
 
-from badnet import config 
-from badnet.generators.gen import make_coll, generate
+from subtlenet import config 
+from subtlenet.generators.gen import make_coll, generate
 
 ''' 
 some global definitions

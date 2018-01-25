@@ -2,10 +2,10 @@
 
 from setuptools import setup, find_packages
 
-setup(name='badnet',
+setup(name='subtlenet',
       version='0.1',
-      description='boosted-jet adversarial networks',
-      url='https://github.com/sidnarayanan/BAdNet',
+      description='substructure-learning networks',
+      url='https://github.com/sidnarayanan/SubtLeNet',
       author='Sid Narayanan',
       license='MIT',
       packages=find_packages(),
