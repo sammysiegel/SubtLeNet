@@ -1,2 +1,2 @@
-# BAdNet
-Boosted Adversarial Networks
+# SubtLeNet
+SUBsTructure-LEarning NETworks
