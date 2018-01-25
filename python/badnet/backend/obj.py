@@ -9,7 +9,7 @@ from time import time
 from multiprocessing import Process, Pool
 
 from badnet import config
-from utils import NH1,NH2
+from badnet.utils import NH1,NH2
 
 _partitions = ['train', 'test', 'validate']
 

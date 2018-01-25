@@ -4,6 +4,8 @@ from keras import backend as K
 from keras.layers import Dense
 from keras.engine.topology import Layer
 
+print 'import adversarial'
+
 # polynomial layer - currently unused
 class PolyLayer(Layer):
     def __init__(self, output_dim, **kwargs):
