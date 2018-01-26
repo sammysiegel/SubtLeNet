@@ -7,16 +7,15 @@ environ['KERAS_BACKEND'] = 'tensorflow'
 import numpy as np
 import signal
 
-from keras.layers import Input, Dense, Dropout, concatenate, LSTM, BatchNormalization, Conv1D, concatenate, CuDNNLSTM
 from keras.models import Model 
-from keras.callbacks import ModelCheckpoint, LambdaCallback, TensorBoard
-from keras.optimizers import Adam, SGD
-from keras.utils import np_utils
+from keras.callbacks import ModelCheckpoint, LambdaCallback
+from keras.optimizers import Adam
 from keras import backend as K
 K.set_image_data_format('channels_last')
 
 from subtlenet import config 
-from subtlenet.generators.gen import make_coll, generate
+from subtlenet.generators.gen import make_coll, generate, get_dims
+from subtlenet.backend.keras_layers import * 
 
 ''' 
 some global definitions
@@ -24,26 +23,21 @@ some global definitions
 
 NEPOCH = 10
 APOSTLE = 'v1'
-system('cp %s particle_models/train_%s.py'%(argv[0], APOSTLE))
+system('mkdir -p gru_models/')
+system('cp %s gru_models/train_%s.py'%(argv[0], APOSTLE))
 config.limit = 50
-#config.DEBUG = True
 
 ''' 
 instantiate data loaders 
 ''' 
 basedir = '/local/snarayan/genarrays/v_deepgen_0'
-#basedir = '/fastscratch/snarayan/genarrays/v_deepgen_0'
 top = make_coll(basedir + '/PARTITION/Top_*_CATEGORY.npy')
 hig = make_coll(basedir + '/PARTITION/Higgs_*_CATEGORY.npy')
 qcd = make_coll(basedir + '/PARTITION/QCD_*_CATEGORY.npy')
 
 data = [top, hig, qcd]
 
-data[0].objects['train']['particles'].load(memory=False)
-dims = data[0].objects['train']['particles'].data.data.shape 
-dims = (None, dims[1], dims[2]-1) # need to exclude the last column
-if config.limit is not None:
-    dims = (None, config.limit, dims[-1]) # override
+dims = get_dims(top)
 
 '''
 first build the classifier!
@@ -71,7 +65,7 @@ h = Conv1D(32, 2, activation='relu', name='particles_conv0', kernel_initializer=
 h = BatchNormalization(momentum=0.6, name='particles_conv0_bnorm')(h)
 h = Conv1D(16, 4, activation='relu', name='particles_conv1', kernel_initializer='lecun_uniform', padding='same')(h)
 h = BatchNormalization(momentum=0.6, name='particles_conv1_bnorm')(h)
-h = CuDNNLSTM(100, name='particles_lstm')(h)
+h = CuDNNGRU(100,  name='particles_lstm')(h)
 h = Dropout(0.1)(h)
 h = BatchNormalization(momentum=0.6, name='particles_lstm_norm')(h)
 h = Dense(100, activation='relu',name='particles_lstm_dense',kernel_initializer='lecun_uniform')(h)
@@ -102,7 +96,7 @@ print '###################################'
 
 # ctrl+C now triggers a graceful exit
 def save_classifier(name='classifier', model=classifier):
-    model.save('particle_models/%s_%s.h5'%(name, APOSTLE))
+    model.save('gru_models/%s_%s.h5'%(name, APOSTLE))
 
 def save_and_exit(signal=None, frame=None, name='classifier', model=classifier):
     save_classifier(name, model)
@@ -116,7 +110,7 @@ classifier.fit_generator(classifier_train_gen,
                          epochs=NEPOCH,
                          validation_data=classifier_validation_gen,
                          validation_steps=1000,
-                         callbacks = [ModelCheckpoint('particle_models/classifier_conv_%s_{epoch:02d}_{val_loss:.5f}.h5'%APOSTLE)],
+                         callbacks = [ModelCheckpoint('gru_models/classifier_conv_%s_{epoch:02d}_{val_loss:.5f}.h5'%APOSTLE)],
                         )
 save_classifier()
 

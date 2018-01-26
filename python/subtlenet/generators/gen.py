@@ -3,6 +3,13 @@ from _common import *
 _truths = ['nprongs']
 truths = {_truths[x]:x for x in xrange(len(_truths))}
 
+def get_dims(coll):
+    coll.objects['train']['particles'].load(memory=False)
+    dims = coll.objects['train']['particles'].data.data.shape 
+    dims = (dims[0], dims[1], dims[2]-1) # need to exclude the last column
+    if config.limit is not None and config.limit < dims[1]:
+        dims = (dims[0], config.limit, dims[2])
+    return dims 
 
 def make_coll(fpath):
     coll = obj.GenCollection()
