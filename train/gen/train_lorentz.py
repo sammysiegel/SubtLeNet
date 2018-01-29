@@ -74,7 +74,7 @@ outer = CuDNNLSTM(64, name='lstm_outer', return_sequences=True)(h)
 misc = CuDNNLSTM(32, name='lstm_misc', return_sequences=True)(input_misc)
 
 # now put it all together
-h = concatenate([inner, outer, misc], axis=-1)
+h = concatenate([inner,outer, misc], axis=-1)
 h = CuDNNLSTM(1024, name='lstm_final', return_sequences=True)(h)
 h= Flatten()(h)
 

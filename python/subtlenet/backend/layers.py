@@ -5,6 +5,7 @@ import keras.backend as K
 from keras.engine import Layer, InputSpec
 from keras.layers import RNN
 from keras import activations, initializers, regularizers, constraints
+import tensorflow as tf
 
 
 class LorentzInnerCell(Layer):
@@ -35,7 +36,7 @@ class LorentzInnerCell(Layer):
 
         self.dropout = min(1., max(0., dropout))
         self.recurrent_dropout = min(1., max(0., recurrent_dropout))
-        self.state_size = 4 # 4-vector 
+        self.state_size = (1, 4) # 4-vector 
         self._dropout_mask = None
         self._recurrent_dropout_mask = None
 
@@ -44,16 +45,22 @@ class LorentzInnerCell(Layer):
         self.built = True
 
     def call(self, inputs, states, training=None):
-        vec0 = states[0]
+        vec0 = states[1]
         vec1 = inputs
+        N = K.shape(vec0)[0]
         
-        p_component = K.dot(vec0[:,:3], vec1[:,:3])
+        #p_component = tf.diag(K.dot(vec0[:,:3], K.transpose(vec1[:,:3])))
+        # above line allocates too much memory on GPU...hardcode the inner 
+        # product for now?
+        p0_component = vec0[:,0] * vec1[:,0]
+        p1_component = vec0[:,1] * vec1[:,1]
+        p2_component = vec0[:,2] * vec1[:,2]
         e_component = vec0[:,3] * vec1[:,3]
         
-        ip = p_component - e_component 
-        output = self.activation(ip)
+        ip = p0_component + p1_component + p2_component - e_component 
+        output = K.reshape(self.activation(ip), (N, -1))
 
-        return output, [vec1] # new input is state for next call
+        return output, [output, vec1] # new input is state for next call
 
     def get_config(self):
         config = {'units': self.units,
@@ -184,7 +191,7 @@ class LorentzOuterCell(Layer):
 
         self.dropout = min(1., max(0., dropout))
         self.recurrent_dropout = min(1., max(0., recurrent_dropout))
-        self.state_size = 4 # 4-vector 
+        self.state_size = (16,4) # 4-vector 
         self._dropout_mask = None
         self._recurrent_dropout_mask = None
 
@@ -193,7 +200,7 @@ class LorentzOuterCell(Layer):
         self.built = True
 
     def call(self, inputs, states, training=None):
-        vec0 = states[0]
+        vec0 = states[1]
         vec1 = inputs
         
         N = K.shape(vec0)[0]
@@ -202,7 +209,7 @@ class LorentzOuterCell(Layer):
                        (N, -1))
         output = self.activation(op)
 
-        return output, [vec1] # new input is state for next call
+        return output, [output,vec1] # new input is state for next call
 
     def get_config(self):
         config = {'units': self.units,
