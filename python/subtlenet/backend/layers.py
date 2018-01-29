@@ -197,8 +197,8 @@ class LorentzOuterCell(Layer):
         vec1 = inputs
         
         N = K.shape(vec0)[0]
-        op = K.reshape(vec0[:,:,newaxis] *
-                       vec1[:,newaxis,:],
+        op = K.reshape(vec0[:,:,np.newaxis] *
+                       vec1[:,np.newaxis,:],
                        (N, -1))
         output = self.activation(ip)
 
