@@ -3,7 +3,7 @@
 from setuptools import setup, find_packages
 
 setup(name='subtlenet',
-      version='0.1',
+      version='0.1.1',
       description='substructure-learning networks',
       url='https://github.com/sidnarayanan/SubtLeNet',
       author='Sid Narayanan',
