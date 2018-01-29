@@ -8,8 +8,8 @@ from math import floor
 from time import time 
 from multiprocessing import Process, Pool
 
-from subtlenet import config
-from subtlenet.utils import NH1,NH2
+from ..  import config
+from ..utils import NH1,NH2
 
 _partitions = ['train', 'test', 'validate']
 
