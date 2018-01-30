@@ -22,7 +22,7 @@ from subtlenet.generators.gen import make_coll, generate
 some global definitions
 ''' 
 
-NEPOCH = 10
+NEPOCH = 20
 APOSTLE = 'v1'
 system('cp %s particle_models/train_%s.py'%(argv[0], APOSTLE))
 config.limit = 50
@@ -31,7 +31,7 @@ config.limit = 50
 ''' 
 instantiate data loaders 
 ''' 
-basedir = '/local/snarayan/genarrays/v_deepgen_0'
+basedir = '/local/snarayan/genarrays/v_deepgen_1'
 #basedir = '/fastscratch/snarayan/genarrays/v_deepgen_0'
 top = make_coll(basedir + '/PARTITION/Top_*_CATEGORY.npy')
 hig = make_coll(basedir + '/PARTITION/Higgs_*_CATEGORY.npy')
@@ -91,7 +91,7 @@ for i in xrange(1,5):
 y_hat = Dense(config.n_truth, activation='softmax')(h)
 
 classifier = Model(inputs=inputs, outputs=[y_hat])
-classifier.compile(optimizer=Adam(lr=0.001),
+classifier.compile(optimizer=Adam(lr=0.0005),
                    loss='categorical_crossentropy',
                    metrics=['accuracy'])
 

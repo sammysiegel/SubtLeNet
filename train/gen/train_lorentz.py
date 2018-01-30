@@ -12,6 +12,7 @@ from keras.callbacks import ModelCheckpoint, LambdaCallback, TensorBoard
 from keras.optimizers import Adam, SGD
 from keras.utils import np_utils
 from keras import backend as K
+from keras.utils import plot_model
 K.set_image_data_format('channels_last')
 
 from subtlenet import config 
@@ -23,10 +24,10 @@ from subtlenet.backend.layers import *
 some global definitions
 ''' 
 
-NEPOCH = 10
+NEPOCH = 20
 APOSTLE = 'v1'
 system('cp %s lorentz_models/train_%s.py'%(argv[0], APOSTLE))
-config.limit = 50
+#config.limit = 20
 #config.DEBUG = True
 
 ''' 
@@ -65,17 +66,19 @@ inputs = [input_4vec, input_misc, input_mass, input_pt]
 
 # now build the 4-vector networks
 h = LorentzInner(name='lorentz_inner', return_sequences=True)(input_4vec)
-inner = CuDNNLSTM(16, name='lstm_inner', return_sequences=True)(h)
+#inner = CuDNNLSTM(16, name='lstm_inner', return_sequences=True)(h)
+inner = h
 
 h = LorentzOuter(name='lorentz_outer', return_sequences=True)(input_4vec)
-outer = CuDNNLSTM(64, name='lstm_outer', return_sequences=True)(h)
+#outer = CuDNNLSTM(64, name='lstm_outer', return_sequences=True)(h)
+outer = h
 
 # now build the misc network
 misc = CuDNNLSTM(32, name='lstm_misc', return_sequences=True)(input_misc)
 
 # now put it all together
-h = concatenate([inner,outer, misc], axis=-1)
-h = CuDNNLSTM(1024, name='lstm_final', return_sequences=True)(h)
+h = concatenate([input_4vec, inner, outer, misc], axis=-1)
+h = CuDNNLSTM(128, name='lstm_final', return_sequences=True)(h)
 h= Flatten()(h)
 
 h = Dense(256, activation='relu',name='particles_lstm_dense1',kernel_initializer='lecun_uniform')(h)
@@ -102,12 +105,13 @@ for i in xrange(1,5):
 y_hat = Dense(config.n_truth, activation='softmax')(h)
 
 classifier = Model(inputs=inputs, outputs=[y_hat])
-classifier.compile(optimizer=Adam(lr=0.001),
+classifier.compile(optimizer=Adam(lr=0.0005),
                    loss='categorical_crossentropy',
                    metrics=['accuracy'])
 
 print '########### CLASSIFIER ############'
 classifier.summary()
+plot_model(classifier, show_shapes=True, show_layer_names=False, to_file='/home/snarayan/public_html/figs/deepgen/v1/lorentz.png')
 print '###################################'
 
 
@@ -117,10 +121,11 @@ def save_classifier(name='classifier', model=classifier):
 
 def save_and_exit(signal=None, frame=None, name='classifier', model=classifier):
     save_classifier(name, model)
-    flog.close()
     exit(1)
 
 signal.signal(signal.SIGINT, save_and_exit)
+
+classifier.save('lorentz_models/untrained.h5')
 
 classifier.fit_generator(classifier_train_gen, 
                          steps_per_epoch=3000, 

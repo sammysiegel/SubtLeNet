@@ -8,12 +8,131 @@ from keras import activations, initializers, regularizers, constraints
 import tensorflow as tf
 
 
+class DenseBroadcast(Layer):
+    """
+    `DenseBroadcast` implements the operation:
+    `output = activation(dot(input, kernel) + bias)`
+    where `activation` is the element-wise activation function
+    passed as the `activation` argument, `kernel` is a weights matrix
+    created by the layer, and `bias` is a bias vector created by the layer
+    (only applicable if `use_bias` is `True`). It is practically identical
+    to `Dense`, except if `input` has rank greater than 2, it is not flattened,
+    but rather the dot is broadcast across the remaining dimensions.
+
+    # Arguments
+        units: Positive integer, dimensionality of the output space.
+        activation: Activation function to use
+            If you don't specify anything, no activation is applied
+            (ie. "linear" activation: `a(x) = x`).
+        use_bias: Boolean, whether the layer uses a bias vector.
+        kernel_initializer: Initializer for the `kernel` weights matrix
+        bias_initializer: Initializer for the bias vector
+        kernel_regularizer: Regularizer function applied to
+            the `kernel` weights matrix
+        bias_regularizer: Regularizer function applied to the bias vector
+        activity_regularizer: Regularizer function applied to
+            the output of the layer (its "activation").
+        kernel_constraint: Constraint function applied to
+            the `kernel` weights matrix
+        bias_constraint: Constraint function applied to the bias vector
+
+    # Input shape
+        nD tensor with shape: `(batch_size, input_dim, ...)`.
+
+    # Output shape
+        nD tensor with shape: `(batch_size, units, ...)`.
+    """
+
+    def __init__(self, units,
+                 activation=None,
+                 use_bias=True,
+                 kernel_initializer='glorot_uniform',
+                 bias_initializer='zeros',
+                 kernel_regularizer=None,
+                 bias_regularizer=None,
+                 activity_regularizer=None,
+                 kernel_constraint=None,
+                 bias_constraint=None,
+                 **kwargs):
+        if 'input_shape' not in kwargs and 'input_dim' in kwargs:
+            kwargs['input_shape'] = (kwargs.pop('input_dim'),)
+        super(DenseBroadcast, self).__init__(**kwargs)
+        self.units = units
+        self.activation = activations.get(activation)
+        self.use_bias = use_bias
+        self.kernel_initializer = initializers.get(kernel_initializer)
+        self.bias_initializer = initializers.get(bias_initializer)
+        self.kernel_regularizer = regularizers.get(kernel_regularizer)
+        self.bias_regularizer = regularizers.get(bias_regularizer)
+        self.activity_regularizer = regularizers.get(activity_regularizer)
+        self.kernel_constraint = constraints.get(kernel_constraint)
+        self.bias_constraint = constraints.get(bias_constraint)
+        self.input_spec = InputSpec(min_ndim=2)
+        self.supports_masking = True
+
+    def build(self, input_shape):
+        assert len(input_shape) >= 2
+        input_dim = input_shape[1] # always use the second dimension and broadcast over rest
+
+        self.kernel = self.add_weight(shape=(input_dim, self.units),
+                                      initializer=self.kernel_initializer,
+                                      name='kernel',
+                                      regularizer=self.kernel_regularizer,
+                                      constraint=self.kernel_constraint)
+        if self.use_bias:
+            self.bias = self.add_weight(shape=(self.units,),
+                                        initializer=self.bias_initializer,
+                                        name='bias',
+                                        regularizer=self.bias_regularizer,
+                                        constraint=self.bias_constraint)
+        else:
+            self.bias = None
+        self.input_spec = InputSpec(min_ndim=2, axes={1: input_dim})
+        self.built = True
+
+    def call(self, inputs):
+        output = tf.einsum('ij...,jk->ik...', inputs, self.kernel)
+        if self.use_bias:
+            output = K.bias_add(output, self.bias)
+        if self.activation is not None:
+            output = self.activation(output)
+        return output
+
+    def compute_output_shape(self, input_shape):
+        assert input_shape and len(input_shape) >= 2
+        assert input_shape[1]
+        output_shape = list(input_shape)
+        output_shape[1] = self.units
+        return tuple(output_shape)
+
+    def get_config(self):
+        config = {
+            'units': self.units,
+            'activation': activations.serialize(self.activation),
+            'use_bias': self.use_bias,
+            'kernel_initializer': initializers.serialize(self.kernel_initializer),
+            'bias_initializer': initializers.serialize(self.bias_initializer),
+            'kernel_regularizer': regularizers.serialize(self.kernel_regularizer),
+            'bias_regularizer': regularizers.serialize(self.bias_regularizer),
+            'activity_regularizer': regularizers.serialize(self.activity_regularizer),
+            'kernel_constraint': constraints.serialize(self.kernel_constraint),
+            'bias_constraint': constraints.serialize(self.bias_constraint)
+        }
+        base_config = super(DenseBroadcast, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+
+def _inner_product(v0, v1):
+    x = tf.einsum('ij,ij->i', v0, v1)
+    t = v0[:,3] * v1[:,3]
+    return x - t
+
+
 class LorentzInnerCell(Layer):
     """Cell class for LorentzInner.
 
     # Arguments
         activation: Activation function to use
-            (see [activations](../activations.md)).
             Default: linear (`linear`).
             If you pass `None`, no activation is applied
             (ie. "linear" activation: `a(x) = x`).
@@ -31,7 +150,7 @@ class LorentzInnerCell(Layer):
                  recurrent_dropout=0.,
                  **kwargs):
         super(LorentzInnerCell, self).__init__(**kwargs)
-        self.units = 1 
+        self.units = 2 
         self.activation = activations.get(activation)
 
         self.dropout = min(1., max(0., dropout))
@@ -52,19 +171,21 @@ class LorentzInnerCell(Layer):
         #p_component = tf.diag(K.dot(vec0[:,:3], K.transpose(vec1[:,:3])))
         # above line allocates too much memory on GPU...hardcode the inner 
         # product for now?
-        p0_component = vec0[:,0] * vec1[:,0]
-        p1_component = vec0[:,1] * vec1[:,1]
-        p2_component = vec0[:,2] * vec1[:,2]
-        e_component = vec0[:,3] * vec1[:,3]
-        
-        ip = p0_component + p1_component + p2_component - e_component 
-        output = K.reshape(self.activation(ip), (N, -1))
+        # p0_component = vec0[:,0] * vec1[:,0]
+        # p1_component = vec0[:,1] * vec1[:,1]
+        # p2_component = vec0[:,2] * vec1[:,2]
+        # e_component = vec0[:,3] * vec1[:,3]
+        # ip = p0_component + p1_component + p2_component - e_component 
+        ip = _inner_product(vec0, vec1)
 
+        diff = vec0 - vec1 
+        d01 = _inner_product(diff, diff)
+
+        output = K.reshape(self.activation(K.stack([ip, d01], axis=1)), (N, -1))
         return output, [output, vec1] # new input is state for next call
 
     def get_config(self):
-        config = {'units': self.units,
-                  'activation': activations.serialize(self.activation),
+        config = {'activation': activations.serialize(self.activation),
                   'dropout': self.dropout,
                   'recurrent_dropout': self.recurrent_dropout}
         base_config = super(LorentzInnerCell, self).get_config()
@@ -77,7 +198,6 @@ class LorentzInner(RNN):
 
     # Arguments
         activation: Activation function to use
-            (see [activations](../activations.md)).
             Default: 'linear'
             If you pass `None`, no activation is applied
             (ie. "linear" activation: `a(x) = x`).
@@ -119,7 +239,6 @@ class LorentzInner(RNN):
                                            return_sequences=return_sequences,
                                            return_state=return_state,
                                            go_backwards=go_backwards,
-                                           stateful=False,
                                            unroll=unroll,
                                            **kwargs)
 
@@ -148,8 +267,7 @@ class LorentzInner(RNN):
         return self.cell.recurrent_dropout
 
     def get_config(self):
-        config = {'units': self.units,
-                  'activation': activations.serialize(self.activation),
+        config = {'activation': activations.serialize(self.activation),
                   'dropout': self.dropout,
                   'recurrent_dropout': self.recurrent_dropout}
         base_config = super(LorentzInner, self).get_config()
@@ -212,8 +330,7 @@ class LorentzOuterCell(Layer):
         return output, [output,vec1] # new input is state for next call
 
     def get_config(self):
-        config = {'units': self.units,
-                  'activation': activations.serialize(self.activation),
+        config = {'activation': activations.serialize(self.activation),
                   'dropout': self.dropout,
                   'recurrent_dropout': self.recurrent_dropout}
         base_config = super(LorentzOuterCell, self).get_config()
@@ -268,7 +385,6 @@ class LorentzOuter(RNN):
                                            return_sequences=return_sequences,
                                            return_state=return_state,
                                            go_backwards=go_backwards,
-                                           stateful=False,
                                            unroll=unroll,
                                            **kwargs)
 
@@ -297,8 +413,7 @@ class LorentzOuter(RNN):
         return self.cell.recurrent_dropout
 
     def get_config(self):
-        config = {'units': self.units,
-                  'activation': activations.serialize(self.activation),
+        config = {'activation': activations.serialize(self.activation),
                   'dropout': self.dropout,
                   'recurrent_dropout': self.recurrent_dropout}
         base_config = super(LorentzOuter, self).get_config()

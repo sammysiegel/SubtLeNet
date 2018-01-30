@@ -6,11 +6,13 @@ n_btruth = 4              # size of one-hot
 
 weights_scale = None     # honestly don't remember
 
+limit = None             # whether to limit the number of input particles
+
 # decorrelation
 n_decorr_bins = 15       # granularity of binning
 max_mass = 300.          # maximum msd
 max_rho = 7.5            # maximum rho
-min_rho = -5.           # minimum rho
+min_rho = -5.            # minimum rho
 max_pt = 1000.           # maximum pT
 min_pt = 450.            # minimum pT
 adversary_mask = 1       # which category we should apply the decorrelation to, e.g. only on QCD(=1prong)

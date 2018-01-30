@@ -24,14 +24,14 @@ from subtlenet.generators.gen_singletons import make_coll, generate
 some global definitions
 ''' 
 
-NEPOCH = 3
+NEPOCH = 20
 APOSTLE = 'v0'
 system('cp %s shallow_models/train_%s.py'%(argv[0], APOSTLE))
 
 ''' 
 instantiate data loaders 
 ''' 
-basedir = '/data/t3serv014/snarayan/deep/v_deepgen_0/'
+basedir = '/data/t3serv014/snarayan/deep/v_deepgen_1/'
 top = make_coll(basedir + '/PARTITION/Top_*_CATEGORY.npy')
 hig = make_coll(basedir + '/PARTITION/Higgs_*_CATEGORY.npy')
 qcd = make_coll(basedir + '/PARTITION/QCD_*_CATEGORY.npy')
@@ -56,7 +56,7 @@ dense   = Dense(9, activation='tanh',name='dense3',kernel_initializer='lecun_uni
 y_hat   = Dense(config.n_truth, activation='softmax')                                   (dense)
 
 classifier = Model(inputs=inputs, outputs=[y_hat])
-classifier.compile(optimizer=Adam(lr=0.001),
+classifier.compile(optimizer=Adam(lr=0.0005),
                    loss='categorical_crossentropy',
                    metrics=['accuracy'])
 
