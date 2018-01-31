@@ -64,23 +64,32 @@ input_mass = Input(shape=(1,), name='input_mass')
 input_pt = Input(shape=(1,), name='input_pt')
 inputs = [input_4vec, input_misc, input_mass, input_pt]
 
-h = DenseBroadcast(32, activation='linear')(input_4vec)
-#h = input_4vec
-h = concatenate([input_4vec, h], axis=1)
-
 # now build the 4-vector networks
-h = LorentzInner(name='lorentz_inner', return_sequences=True)(h)
+h = LorentzInner(name='lorentz_inner', return_sequences=True)(input_4vec)
+#inner = CuDNNLSTM(16, name='lstm_inner', return_sequences=True)(h)
+inner = h
+
+h = LorentzOuter(name='lorentz_outer', return_sequences=True)(input_4vec)
+#outer = CuDNNLSTM(64, name='lstm_outer', return_sequences=True)(h)
+outer = h
+
+# now build the misc network
+misc = CuDNNLSTM(32, name='lstm_misc', return_sequences=True)(input_misc)
+
+# now put it all together
+h = concatenate([input_4vec, inner, outer, misc], axis=-1)
+h = CuDNNLSTM(128, name='lstm_final', return_sequences=True)(h)
 h= Flatten()(h)
 
-h = Dense(256, activation='relu',name='lorentz_dense1',kernel_initializer='lecun_uniform')(h)
+h = Dense(256, activation='relu',name='particles_lstm_dense1',kernel_initializer='lecun_uniform')(h)
 h = Dropout(0.1)(h)
-particles_final = BatchNormalization(momentum=0.6,name='lorentz_dense_norm1')(h)
-h = Dense(256, activation='relu',name='lorentz_dense2',kernel_initializer='lecun_uniform')(h)
+particles_final = BatchNormalization(momentum=0.6,name='particles_lstm_dense_norm1')(h)
+h = Dense(256, activation='relu',name='particles_lstm_dense2',kernel_initializer='lecun_uniform')(h)
 h = Dropout(0.1)(h)
-particles_final = BatchNormalization(momentum=0.6,name='lorentz_dense_norm2')(h)
-h = Dense(256, activation='relu',name='lorentz_dense3',kernel_initializer='lecun_uniform')(h)
+particles_final = BatchNormalization(momentum=0.6,name='particles_lstm_dense_norm2')(h)
+h = Dense(256, activation='relu',name='particles_lstm_dense3',kernel_initializer='lecun_uniform')(h)
 h = Dropout(0.1)(h)
-particles_final = BatchNormalization(momentum=0.6,name='lorentz_dense_norm3')(h)
+particles_final = BatchNormalization(momentum=0.6,name='particles_lstm_dense_norm3')(h)
 
 # merge everything
 to_merge = [particles_final, input_mass, input_pt]
@@ -102,7 +111,7 @@ classifier.compile(optimizer=Adam(lr=0.0005),
 
 print '########### CLASSIFIER ############'
 classifier.summary()
-#plot_model(classifier, show_shapes=True, show_layer_names=False, to_file='/home/snarayan/public_html/figs/deepgen/v1/lorentz.png')
+plot_model(classifier, show_shapes=True, show_layer_names=False, to_file='/home/snarayan/public_html/figs/deepgen/v1/lorentz.png')
 print '###################################'
 
 

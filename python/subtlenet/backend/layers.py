@@ -80,7 +80,7 @@ class DenseBroadcast(Layer):
                                       regularizer=self.kernel_regularizer,
                                       constraint=self.kernel_constraint)
         if self.use_bias:
-            self.bias = self.add_weight(shape=(self.units,),
+            self.bias = self.add_weight(shape=(self.units,1,),
                                         initializer=self.bias_initializer,
                                         name='bias',
                                         regularizer=self.bias_regularizer,
@@ -91,7 +91,7 @@ class DenseBroadcast(Layer):
         self.built = True
 
     def call(self, inputs):
-        output = tf.einsum('ij...,jk->ik...', inputs, self.kernel)
+        output = tf.einsum('ijk,jl->ilk', inputs, self.kernel)
         if self.use_bias:
             output = K.bias_add(output, self.bias)
         if self.activation is not None:
@@ -123,6 +123,11 @@ class DenseBroadcast(Layer):
 
 
 def _inner_product(v0, v1):
+    # x0_component = v0[:,0] * v1[:,0]
+    # x1_component = v0[:,1] * v1[:,1]
+    # x2_component = v0[:,2] * v1[:,2]
+    # t_component = v0[:,3] * v1[:,3]
+    # return (x0_component + x1_component + x2_component - t_component)
     x = tf.einsum('ij,ij->i', v0, v1)
     t = v0[:,3] * v1[:,3]
     return x - t
@@ -155,7 +160,7 @@ class LorentzInnerCell(Layer):
 
         self.dropout = min(1., max(0., dropout))
         self.recurrent_dropout = min(1., max(0., recurrent_dropout))
-        self.state_size = (1, 4) # 4-vector 
+        self.state_size = (2, 4) # 4-vector 
         self._dropout_mask = None
         self._recurrent_dropout_mask = None
 
@@ -168,20 +173,13 @@ class LorentzInnerCell(Layer):
         vec1 = inputs
         N = K.shape(vec0)[0]
         
-        #p_component = tf.diag(K.dot(vec0[:,:3], K.transpose(vec1[:,:3])))
-        # above line allocates too much memory on GPU...hardcode the inner 
-        # product for now?
-        # p0_component = vec0[:,0] * vec1[:,0]
-        # p1_component = vec0[:,1] * vec1[:,1]
-        # p2_component = vec0[:,2] * vec1[:,2]
-        # e_component = vec0[:,3] * vec1[:,3]
-        # ip = p0_component + p1_component + p2_component - e_component 
         ip = _inner_product(vec0, vec1)
 
         diff = vec0 - vec1 
         d01 = _inner_product(diff, diff)
 
-        output = K.reshape(self.activation(K.stack([ip, d01], axis=1)), (N, -1))
+        output = self.activation(K.stack([ip, d01], axis=1))
+        #output = K.reshape(self.activation(K.stack([ip, d01], axis=1)), (N, -1))
         return output, [output, vec1] # new input is state for next call
 
     def get_config(self):
