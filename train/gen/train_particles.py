@@ -16,35 +16,29 @@ from keras import backend as K
 K.set_image_data_format('channels_last')
 
 from subtlenet import config 
-from subtlenet.generators.gen import make_coll, generate
+from subtlenet.generators.gen import make_coll, generate, get_dims
+import subtlenet.generators.gen as generator
+from paths import basedir 
 
 ''' 
 some global definitions
 ''' 
 
 NEPOCH = 20
-APOSTLE = 'v1'
+generator.truncate = 4
+config.limit = 10
+APOSTLE = 'v4_trunc%i_limit%i'%(generator.truncate, config.limit)
 system('cp %s particle_models/train_%s.py'%(argv[0], APOSTLE))
-config.limit = 50
-#config.DEBUG = True
 
 ''' 
 instantiate data loaders 
 ''' 
-basedir = '/local/snarayan/genarrays/v_deepgen_1'
-#basedir = '/fastscratch/snarayan/genarrays/v_deepgen_0'
 top = make_coll(basedir + '/PARTITION/Top_*_CATEGORY.npy')
-hig = make_coll(basedir + '/PARTITION/Higgs_*_CATEGORY.npy')
 qcd = make_coll(basedir + '/PARTITION/QCD_*_CATEGORY.npy')
 
-data = [top, hig, qcd]
+data = [top, qcd]
 
-data[0].objects['train']['particles'].load(memory=False)
-dims = data[0].objects['train']['particles'].data.data.shape 
-dims = (None, dims[1], dims[2]-1) # need to exclude the last column
-if config.limit is not None:
-    dims = (None, config.limit, dims[-1]) # override
-
+dims = get_dims(top)
 '''
 first build the classifier!
 '''
@@ -55,7 +49,7 @@ opts = {
         'learn_pt' : True,
         }
 classifier_train_gen = generate(data, partition='train', batch=500, **opts)
-classifier_validation_gen = generate(data, partition='validate', batch=1000, **opts)
+classifier_validation_gen = generate(data, partition='validate', batch=2000, **opts)
 classifier_test_gen = generate(data, partition='test', batch=10, **opts)
 test_i, test_o, test_w = next(classifier_test_gen)
 
@@ -72,7 +66,7 @@ h = BatchNormalization(momentum=0.6, name='particles_conv0_bnorm')(h)
 h = Conv1D(16, 4, activation='relu', name='particles_conv1', kernel_initializer='lecun_uniform', padding='same')(h)
 h = BatchNormalization(momentum=0.6, name='particles_conv1_bnorm')(h)
 h = CuDNNLSTM(100, name='particles_lstm')(h)
-h = Dropout(0.1)(h)
+#h = Dropout(0.1)(h)
 h = BatchNormalization(momentum=0.6, name='particles_lstm_norm')(h)
 h = Dense(100, activation='relu',name='particles_lstm_dense',kernel_initializer='lecun_uniform')(h)
 particles_final = BatchNormalization(momentum=0.6,name='particles_lstm_dense_norm')(h)
@@ -83,8 +77,8 @@ h = concatenate(to_merge)
 
 for i in xrange(1,5):
     h = Dense(50, activation='relu',name='final_dense%i'%i)(h)
-    if i%2:
-        h = Dropout(0.1)(h)
+#    if i%2:
+#        h = Dropout(0.1)(h)
     h = BatchNormalization(momentum=0.6,name='final_dense%i_norm'%i)(h)
 
 
@@ -106,7 +100,6 @@ def save_classifier(name='classifier', model=classifier):
 
 def save_and_exit(signal=None, frame=None, name='classifier', model=classifier):
     save_classifier(name, model)
-    flog.close()
     exit(1)
 
 signal.signal(signal.SIGINT, save_and_exit)
@@ -116,7 +109,7 @@ classifier.fit_generator(classifier_train_gen,
                          epochs=NEPOCH,
                          validation_data=classifier_validation_gen,
                          validation_steps=1000,
-                         callbacks = [ModelCheckpoint('particle_models/classifier_conv_%s_{epoch:02d}_{val_loss:.5f}.h5'%APOSTLE)],
+                         callbacks = [ModelCheckpoint('particle_models/%s_%s_best.h5'%('classifier',APOSTLE), save_best_only=True, verbose=True)],
                         )
 save_classifier()
 

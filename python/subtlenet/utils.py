@@ -8,6 +8,7 @@ from matplotlib.colors import LogNorm
 from matplotlib import pyplot as plt
 #import seaborn
 
+DOPDF = True
 
 ## general layout                                                                                                                      
 #seaborn.set(style="ticks")
@@ -238,7 +239,8 @@ class NH2(object):
         if output:
             print 'Creating',output
             plt.savefig(output+'.png',bbox_inches='tight',dpi=100)
-            plt.savefig(output+'.pdf',bbox_inches='tight')
+            if DOPDF:
+                plt.savefig(output+'.pdf',bbox_inches='tight')
         else:
             plt.show()
 
@@ -266,7 +268,8 @@ class Plotter(object):
         if 'output':
             print 'Creating',output
             plt.savefig(output+'.png',bbox_inches='tight',dpi=100)
-            plt.savefig(output+'.pdf',bbox_inches='tight')
+            if DOPDF:
+                plt.savefig(output+'.pdf',bbox_inches='tight')
         else:
             plt.show()
 
@@ -277,6 +280,9 @@ p = Plotter()
 class Roccer(object):
     def __init__(self):
         self.cfgs = []
+        self.axis = [0,1,0.0005,1]
+        self.yticks = [10**x for x in xrange(-5,1)]
+        self.yticklabels = [('1' if x==0 else r'$10^{%i}$'%x) for x in xrange(-5,1)]
     def add_vars(self, sig_hists, bkg_hists, labels, plotstyles=None):
         try:
             for h in sorted(sig_hists):
@@ -332,15 +338,16 @@ class Roccer(object):
                 color += plotstyle 
             plt.plot(epsilons_sig, epsilons_bkg, color=color, label=label,linewidth=2)
 
-        plt.axis([0,1,0.0005,1])
+        plt.axis(self.axis)
         plt.yscale('log', nonposy='clip')
         plt.legend(loc=4, fontsize=22)
         plt.ylabel('Background fake rate', fontsize=24)
         plt.xlabel('Signal efficiency', fontsize=24)
-        ax.set_yticks([0.001, 0.01,0.1,1])
-        ax.set_yticklabels(['0.001','0.01','0.1','1'])
+        ax.set_yticks(self.yticks)
+        ax.set_yticklabels(self.yticklabels)
 
         print 'Creating',output
         plt.savefig(output+'.png',bbox_inches='tight',dpi=300)
-        plt.savefig(output+'.pdf',bbox_inches='tight')
+        if DOPDF:
+            plt.savefig(output+'.pdf',bbox_inches='tight')
 

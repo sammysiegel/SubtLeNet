@@ -3,17 +3,22 @@ from _common import *
 _truths = ['nprongs']
 truths = {_truths[x]:x for x in xrange(len(_truths))}
 
+truncate = -1
+
 def get_dims(coll):
     coll.objects['train']['particles'].load(memory=False)
     dims = coll.objects['train']['particles'].data.data.shape 
-    dims = (dims[0], dims[1], dims[2]-1) # need to exclude the last column
+    if truncate > 0:
+        dims = (dims[0], dims[1], truncate) 
+    else:
+        dims = (dims[0], dims[1], dims[2]-truncate) # need to exclude the last column
     if config.limit is not None and config.limit < dims[1]:
         dims = (dims[0], config.limit, dims[2])
     return dims 
 
-def make_coll(fpath):
+def make_coll(fpath, categories=['singletons','particles']):
     coll = obj.GenCollection()
-    coll.add_categories(['singletons','particles'], fpath)
+    coll.add_categories(categories, fpath)
     return coll
 
 def generate(collections, partition='train', batch=32, 
@@ -51,9 +56,9 @@ def generate(collections, partition='train', batch=32,
             data = {k:v.data for k,v in next(generators[c]).iteritems()}
             # the last element of the particle feature vector is really truth info - do not train!
             if config.limit:
-                i = [data['particles'][:,:config.limit,:-1]]
+                i = [data['particles'][:,:config.limit,:truncate]]
             else:
-                i = [data['particles']][:,:,:-1]
+                i = [data['particles']][:,:,:truncate]
             if learn_mass:
                 i.append(data['singletons'][:,msd_index] * msd_norm_factor)
             if learn_pt:

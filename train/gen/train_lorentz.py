@@ -25,7 +25,7 @@ some global definitions
 ''' 
 
 NEPOCH = 20
-APOSTLE = 'v1'
+APOSTLE = 'v3'
 system('cp %s lorentz_models/train_%s.py'%(argv[0], APOSTLE))
 #config.limit = 20
 #config.DEBUG = True
@@ -33,12 +33,12 @@ system('cp %s lorentz_models/train_%s.py'%(argv[0], APOSTLE))
 ''' 
 instantiate data loaders 
 ''' 
-basedir = '/fastscratch/snarayan/genarrays/v_deepgen_1'
+basedir = '/data/t3serv014/snarayan/deep/v_deepgen_3/'
+#basedir = '/fastscratch/snarayan/genarrays/v_deepgen_1'
 top = make_coll(basedir + '/PARTITION/Top_*_CATEGORY.npy')
-hig = make_coll(basedir + '/PARTITION/Higgs_*_CATEGORY.npy')
 qcd = make_coll(basedir + '/PARTITION/QCD_*_CATEGORY.npy')
 
-data = [top, hig, qcd]
+data = [top, qcd]
 
 dims0, dims1 = get_dims(data[0])
 

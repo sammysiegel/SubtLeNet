@@ -18,20 +18,24 @@ from keras import backend as K
 K.set_image_data_format('channels_last')
 
 from subtlenet import config 
+config.gen_default_variables=['tau3','tau2']
+config.gen_default_mus=[0.5,0.5]
+config.gen_default_sigmas=[0.5,0.5]
+
 from subtlenet.generators.gen_singletons import make_coll, generate
-from paths import basedir
 
 ''' 
 some global definitions
 ''' 
 
 NEPOCH = 20
-APOSTLE = 'v4_nopt'
+APOSTLE = 'tau32'
 system('cp %s shallow_models/train_%s.py'%(argv[0], APOSTLE))
 
 ''' 
 instantiate data loaders 
 ''' 
+basedir = '/data/t3serv014/snarayan/deep/v_deepgen_3/'
 top = make_coll(basedir + '/PARTITION/Top_*_CATEGORY.npy')
 qcd = make_coll(basedir + '/PARTITION/QCD_*_CATEGORY.npy')
 

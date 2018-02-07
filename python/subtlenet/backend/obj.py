@@ -154,9 +154,9 @@ class _DataCollection(object):
             dry = (components and (name not in components))
             if obj.is_empty():
                 if repartition:
-                    # print '_DataCollection.load: repartitioning %s, %s!'%(
-                    #              self.fpath.replace('PARTITION',partition),name
-                    #         )
+                    print '_DataCollection.load: repartitioning %s, %s!'%(
+                                 self.fpath.replace('PARTITION',partition),name
+                            )
                     obj.refresh()
                 else:
                     return False 
@@ -212,8 +212,7 @@ class _DataCollection(object):
                         w = weight 
                     if len(x.shape) > 1:
                         if weighted:
-                            print var, x.shape
-                            w = np.array([w for _ in x.shape[1]]).flatten()
+                            w = np.array([w for _ in xrange(x.shape[1])]).flatten()
                         x = x.flatten() # in case it has more than one dimension
                     if weighted:
                         assert w.shape == x.shape, 'Shapes are not aligned %s %s'%(str(w.shape), str(x.shape))
