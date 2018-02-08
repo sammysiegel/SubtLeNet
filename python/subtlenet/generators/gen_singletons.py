@@ -17,6 +17,8 @@ def generate(collections,
              repartition=True,
              decorr_mass=False,
              decorr_pt=False,
+             kl_decorr_mass=False,
+             kl_decorr_pt=False,
              normalize=False):
     small_batch = max(1, int(batch / len(collections)))
     generators = {c:c.generator(components=['singletons', c.weight,'truth'],
@@ -49,10 +51,10 @@ def generate(collections,
         weights = []
         for c in collections:
             data = {k:v.data for k,v in next(generators[c]).iteritems()}
-            inputs.append([data['singletons'][:,var_idx]])
+            i = [data['singletons'][:,var_idx]]
             # need to apply osme normalization to the inputs:
-            inputs[-1][0] -= mus 
-            inputs[-1][0] /= sigmas 
+            i[0] -= mus 
+            i[0] /= sigmas 
             
             nprongs = np_utils.to_categorical(
                     np.clip(
@@ -63,27 +65,39 @@ def generate(collections,
                 )
             o = [nprongs]
             w = [data[c.weight]]
+            batch_size = w[0].shape[0]
 
-            if decorr_mass:
+            if decorr_mass or kl_decorr_mass:
                 mass = xform_mass(data['singletons'][:,msd_index])
-                o.append(mass)
-                w.append(w[0] * nprongs[:,config.adversary_mask])
+                if decorr_mass:
+                    o.append(mass)
+                    w.append(w[0] * nprongs[:,config.adversary_mask])
+                if kl_decorr_mass:
+                    # inputs get [one-hot mass] + [sample weight]
+                    i.append(np.concatenate([mass, np.reshape(w, (batch_size,1))], axis=-1))
+                    # outputs get [one-hot mass] + [sample weight] + [QCD mask]
+                    o.append(np.concatenate([mass, np.reshape(w, (batch_size,1)), 
+                                             np.reshape(nprongs[:,config.adversary_mask], (batch_size,1))],
+                                            axis=-1))
+                    w.append(w[0] * nprongs[:,config.adversary_mask])
 
-            if decorr_pt:
+            if decorr_pt or kl_decorr_pt:
                 pt = xform_pt(data['singletons'][:,pt_index])
-                o.append(pt)
-                w.append(w[0] * nprongs[:,config.adversary_mask])
+                if decorr_pt:
+                    o.append(pt)
+                    w.append(w[0] * nprongs[:,config.adversary_mask])
 
+            inputs.append(i)
             outputs.append(o)
             weights.append(w)
 
         merged_inputs = []
-        for j in xrange(1):
+        for j in xrange(1 + int(kl_decorr_mass)):
             merged_inputs.append(np.concatenate([v[j] for v in inputs], axis=0))
 
         merged_outputs = []
         merged_weights = []
-        NOUTPUTS = 1 + int(decorr_pt) + int(decorr_mass) 
+        NOUTPUTS = 1 + int(decorr_pt) + int(decorr_mass) + int(kl_decorr_mass) 
         for j in xrange(NOUTPUTS):
             merged_outputs.append(np.concatenate([v[j] for v in outputs], axis=0))
             merged_weights.append(np.concatenate([v[j] for v in weights], axis=0))

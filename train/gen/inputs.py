@@ -44,6 +44,9 @@ f_vars = {
     'x_px'    : (lambda x : x['particles'][:,:10,0], np.arange(-50,50,1), r'Particle $p_x$ [GeV]'),
     'x_py'    : (lambda x : x['particles'][:,:10,1], np.arange(-50,50,1), r'Particle $p_y$ [GeV]'),
     'x_pz'    : (lambda x : x['particles'][:,:10,2], np.arange(-50,300,5), r'Particle $p_z$ [GeV]'),
+    'x_px_last'    : (lambda x : x['particles'][:,10:,0], np.arange(-50,50,1), r'Particle $p_x$ [GeV]'),
+    'x_py_last'    : (lambda x : x['particles'][:,10:,1], np.arange(-50,50,1), r'Particle $p_y$ [GeV]'),
+    'x_pz_last'    : (lambda x : x['particles'][:,10:,2], np.arange(-50,300,5), r'Particle $p_z$ [GeV]'),
 }
 
 # unmasked first

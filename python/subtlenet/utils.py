@@ -293,7 +293,7 @@ class Roccer(object):
                         self.cfgs.append((sig_hists[h], bkg_hists[h], labels[h], plotstyles[h]))
                 except KeyError:
                     pass # something wasn't provided - skip!
-        except TypeError:#only one sig_hist was handed over - not iterable
+        except TypeError as e :#only one sig_hist was handed over - not iterable
             self.cfgs.append((sig_hists,bkg_hists,labels,plotstyles))
     def clear(self):
         self.cfgs = []
@@ -340,7 +340,7 @@ class Roccer(object):
 
         plt.axis(self.axis)
         plt.yscale('log', nonposy='clip')
-        plt.legend(loc=4, fontsize=22)
+        plt.legend(loc=2, fontsize=22)
         plt.ylabel('Background fake rate', fontsize=24)
         plt.xlabel('Signal efficiency', fontsize=24)
         ax.set_yticks(self.yticks)

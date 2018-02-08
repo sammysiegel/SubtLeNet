@@ -12,11 +12,10 @@ import numpy as np
 from keras.models import Model, load_model 
 from subtlenet import config 
 from subtlenet.generators.gen_singletons import make_coll
+from paths import basedir
 
+shallow = load_model('shallow_models/shallow_v4_nopt.h5')
 
-shallow = load_model('shallow_models/shallow_v3_nopt.h5')
-
-basedir = '/fastscratch/snarayan/genarrays/v_deepgen_3/'
 system('rm %s/test/*shallow.npy'%basedir)
 coll = make_coll(basedir + '/PARTITION/*_CATEGORY.npy')
 

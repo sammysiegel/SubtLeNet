@@ -11,13 +11,13 @@ from keras.models import Model, load_model
 from subtlenet import config 
 from subtlenet.generators.gen import make_coll
 import subtlenet.generators.gen as gen
-from data import basedir
+from paths import basedir
 
-gen.truncate = 3
+gen.truncate = 7
 name = argv[1]
 shallow = load_model(argv[2])
 
-config.limit = 10
+config.limit = 50
 system('rm %s/test/*%s.npy'%(basedir,name))
 coll = make_coll(basedir + '/PARTITION/*_CATEGORY.npy')
 

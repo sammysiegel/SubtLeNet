@@ -25,8 +25,8 @@ some global definitions
 ''' 
 
 NEPOCH = 20
-generator.truncate = 4
-config.limit = 10
+generator.truncate = 7
+config.limit = 50
 APOSTLE = 'v4_trunc%i_limit%i'%(generator.truncate, config.limit)
 system('cp %s particle_models/train_%s.py'%(argv[0], APOSTLE))
 
