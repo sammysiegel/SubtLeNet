@@ -40,9 +40,9 @@ _gen_singletons = ['pt', 'eta', 'phi', 'm', 'msd',
 
 gen_singletons = {_gen_singletons[x]:x for x in xrange(len(_gen_singletons))}
 
-gen_default_variables=['eta', 'phi', 'm', 'msd', 'tau3', 'tau2', 'tau1', 'tau3sd', 'tau2sd', 'tau1sd']
-gen_default_mus      =[   0,    0,   50,     50,    0.5,    0.5,    0.5,      0.5,      0.5,      0.5]
-gen_default_sigmas   =[   3,    2,   50,     50,    0.5,    0.5,    0.5,      0.5,      0.5,      0.5]
+gen_default_variables=['eta', 'phi', 'tau3', 'tau2', 'tau1', 'tau3sd', 'tau2sd', 'tau1sd']
+gen_default_mus      =[   0,    0,      0.5,    0.5,    0.5,      0.5,      0.5,      0.5]
+gen_default_sigmas   =[   3,    2,      0.5,    0.5,    0.5,      0.5,      0.5,      0.5]
 #gen_default_variables=['pt', 'eta', 'phi', 'm', 'msd', 'tau3', 'tau2', 'tau1', 'tau3sd', 'tau2sd', 'tau1sd']
 #gen_default_mus      =[ 500,    0,    0,   50,     50,    0.5,    0.5,    0.5,      0.5,      0.5,      0.5]
 #gen_default_sigmas   =[ 500,    3,    2,   50,     50,    0.5,    0.5,    0.5,      0.5,      0.5,      0.5]

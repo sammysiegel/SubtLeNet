@@ -25,8 +25,8 @@ system('mkdir -p %s'%OUTPUT)
 
 components = [
               'singletons',
-              'shallow_nopt', 
-              'shallow_decorr', 
+              'baseline_0', 
+              'decorrelated_0', 
               ]
 
 colls = {
@@ -54,10 +54,10 @@ f_vars = {
     'partonm' : (lambda x : access(x, 'partonm'), np.arange(0,400,5), 'Parton mass [GeV]'),
     'msd'     : (lambda x : access(x, 'msd'), np.arange(0.,400.,20.), r'$m_\mathrm{SD}$ [GeV]'),
     'pt'        : (lambda x : access(x, 'pt'), np.arange(250.,1000.,50.), r'$p_\mathrm{T}$ [GeV]'),
-    'shallow_nopt' : (lambda x : x['shallow_nopt'], np.arange(0,1.2,0.01), r'Shallow (no $p_{T}$) classifier'),
-    'shallow_nopt_roc' : (lambda x : x['shallow_nopt'], np.arange(0,1.2,0.0001), r'Shallow (no $p_{T}$) classifier'),
-    'shallow_decorr' : (lambda x : x['shallow_decorr'], np.arange(0,1.2,0.01), r'Shallow (decorr) classifier'),
-    'shallow_decorr_roc' : (lambda x : x['shallow_decorr'], np.arange(0,1.2,0.0001), r'Shallow (decorr) classifier'),
+    'baseline_0' : (lambda x : x['baseline_0'], np.arange(0,1.2,0.01), r'Shallow (no $p_{T}$) classifier'),
+    'baseline_0_roc' : (lambda x : x['baseline_0'], np.arange(0,1.2,0.0001), r'Shallow (no $p_{T}$) classifier'),
+    'decorrelated_0' : (lambda x : x['decorrelated_0'], np.arange(0,1.2,0.01), r'Shallow (decorr) classifier'),
+    'decorrelated_0_roc' : (lambda x : x['decorrelated_0'], np.arange(0,1.2,0.0001), r'Shallow (decorr) classifier'),
 }
 
 roc_vars = {
@@ -68,8 +68,8 @@ roc_vars = {
             'lstm7_50_roc':'LSTM (7,50)', 
             'lstm4_100_roc':'LSTM (4,100)', 
             'lstm7_100_roc':'LSTM (7,100)', 
-            'shallow_nopt_roc':'Shallow',
-            'shallow_decorr_roc':'Shallow KL',
+            'baseline_0_roc':'Baseline',
+            'decorrelated_0_roc':'Decorr',
             }
 
 # unmasked first
@@ -89,14 +89,14 @@ for k in hists['t']:
     p.clear()
     p.add_hist(ht, '3-prong top', 'r')
     p.add_hist(hq, '1-prong QCD', 'k')
-    p.plot(output=OUTPUT+k, xlabel=f_vars[k][2])
+    p.plot(output=OUTPUT+'inclusive_'+k, xlabel=f_vars[k][2])
 
 r.clear()
 r.add_vars(hists['t'],           
            hists['q'],
            roc_vars
            )
-r.plot(**{'output':OUTPUT+'roc'})
+r.plot(**{'output':OUTPUT+'inclusive_roc'})
 
 
 
@@ -105,18 +105,21 @@ r.plot(**{'output':OUTPUT+'roc'})
 thresholds = [0, 0.5, 0.75, 0.9, 0.99, 0.999]
 
 def sculpting(name, f_pred):
-    h = hists['q'][name]
+    try:
+        h = hists['q'][name+'_roc']
+    except KeyError:
+        h = hists['q'][name]
     tmp_hists = {t:{} for t in thresholds}
     f_vars2d = {
       'msd' : (lambda x : (x['singletons'][:,config.gen_singletons['msd']], f_pred(x)),
                np.arange(40,400,20.),
-               np.arange(0,1,0.001)),
+               np.arange(0,1,0.0001)),
       'pt' : (lambda x : (x['singletons'][:,config.gen_singletons['pt']], f_pred(x)),
                np.arange(400,1000,50.),
-               np.arange(0,1,0.001)),
+               np.arange(0,1,0.0001)),
       'partonm' : (lambda x : (x['singletons'][:,config.gen_singletons['partonm']], f_pred(x)),
                np.arange(0,400,20.),
-               np.arange(0,1,0.001)),
+               np.arange(0,1,0.0001)),
       }
 
     h2d = colls['q'].draw(components=components,
@@ -142,15 +145,15 @@ def sculpting(name, f_pred):
         p.clear()
         for i,t in enumerate(thresholds):
             p.add_hist(tmp_hists[t][k], 'Acceptance=%.3f'%(1-t), colors[i])
-        p.plot(output=OUTPUT+name+'_progression_'+k, xlabel=f_vars[k][2], logy=True)
+        p.plot(output=OUTPUT+'prog_'+name+'_'+k, xlabel=f_vars[k][2], logy=True)
         p.clear()
         for i,t in enumerate(thresholds):
             tmp_hists[t][k].scale()
             p.add_hist(tmp_hists[t][k], 'Acceptance=%.3f'%(1-t), colors[i])
-        p.plot(output=OUTPUT+name+'_progressionnorm_'+k, xlabel=f_vars[k][2], logy=False)
+        p.plot(output=OUTPUT+'prognorm_'+name+'_'+k, xlabel=f_vars[k][2], logy=False)
 
-sculpting('shallow_decorr', f_pred = lambda x : x['shallow_decorr'])
-sculpting('shallow_nopt', f_pred = lambda x : x['shallow_nopt'])
+sculpting('decorrelated_0', f_pred = lambda x : x['decorrelated_0'])
+sculpting('baseline_0', f_pred = lambda x : x['baseline_0'])
 
 # mask the top mass
 def f_mask(data):

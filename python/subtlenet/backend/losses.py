@@ -25,10 +25,15 @@ def sculpting_kl_penalty(y_true, y_pred):
     # structure of y_true[i] : [one-hot vector of nuis] + [sample weight] + [tag truth]
     weight = y_pred[:,-2:-1] * y_true[:,-1:] # set weight to 0 for things that aren't what we want
     tagged_weight = weight * y_pred[:,-1:] # further modify the weight by the prediction
+    untagged_weight = weight * (1 - y_pred[:,-1:]) 
 
     loss = _weighted_KL(Q_data = y_pred[:,:-2],
                         P_data = y_true[:,:-2], # in practice Q_data = P_data frequently
                         Q_weight = tagged_weight,
                         P_weight = weight)
+    loss += _weighted_KL(Q_data = y_pred[:,:-2],
+                         P_data = y_true[:,:-2], 
+                         Q_weight = untagged_weight,
+                         P_weight = weight)
     return loss * K.ones_like(weight[:,0]) # make it of dimension (batch_size,)
 

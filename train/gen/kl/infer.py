@@ -1,7 +1,7 @@
 #!/usr/local/bin/python2.7
 
 
-from sys import exit 
+from sys import exit, argv 
 from os import environ, system
 environ['KERAS_BACKEND'] = 'tensorflow'
 environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID" 
@@ -14,9 +14,10 @@ from subtlenet import config
 from subtlenet.generators.gen_singletons import make_coll
 from paths import basedir
 
-shallow = load_model('shallow_models/shallow_v4_nopt.h5')
+model = load_model(argv[1])
+name = argv[2]
 
-system('rm -f %s/test/*_shallow_decorr.npy'%basedir)
+system('rm -f %s/test/*_%s.npy'%(basedir,name))
 coll = make_coll(basedir + '/PARTITION/*_CATEGORY.npy')
 
 def predict_t(data):
@@ -26,10 +27,10 @@ def predict_t(data):
         sigmas = np.array(config.gen_default_sigmas)
         inputs -= mus 
         inputs /= sigmas 
-        r_shallow_t = shallow.predict(inputs)[:,config.n_truth-1]
+        r_shallow_t = model.predict(inputs)[:,config.n_truth-1]
     else:
         r_shallow_t = np.empty((0,1))
 
     return r_shallow_t 
 
-coll.infer(['singletons'], f=predict_t, name='shallow_decorr', partition='test')
+coll.infer(['singletons'], f=predict_t, name=name, partition='test')

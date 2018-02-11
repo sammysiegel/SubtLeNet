@@ -154,7 +154,7 @@ class _DataCollection(object):
             dry = (components and (name not in components))
             if obj.is_empty():
                 if repartition:
-                    print '_DataCollection.load: repartitioning %s, %s!'%(
+                    print '\n_DataCollection.load: repartitioning %s, %s!'%(
                                  self.fpath.replace('PARTITION',partition),name
                             )
                     obj.refresh()

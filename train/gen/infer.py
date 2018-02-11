@@ -16,7 +16,7 @@ from paths import basedir
 
 shallow = load_model('shallow_models/shallow_v4_nopt.h5')
 
-system('rm %s/test/*shallow.npy'%basedir)
+system('rm %s/test/*shallow_nopt.npy'%basedir)
 coll = make_coll(basedir + '/PARTITION/*_CATEGORY.npy')
 
 def predict_t(data):
