@@ -92,10 +92,11 @@ signal.signal(signal.SIGINT, save_and_exit)
 
 classifier.fit_generator(classifier_train_gen, 
                          steps_per_epoch=5000, 
-                         epochs=4,
+                         epochs=20,
                          validation_data=classifier_validation_gen,
                          validation_steps=10,
                         )
+save_classifier(name='baseline')
 
 adversary.fit_generator(adversary_train_gen, 
                         steps_per_epoch=5000, 
@@ -106,11 +107,4 @@ adversary.fit_generator(adversary_train_gen,
 save_classifier(name='decorrelated')
 
 
-classifier.fit_generator(classifier_train_gen, 
-                         steps_per_epoch=5000, 
-                         epochs=4,
-                         validation_data=classifier_validation_gen,
-                         validation_steps=10,
-                        )
-save_classifier(name='baseline')
 

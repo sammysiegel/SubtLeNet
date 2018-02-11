@@ -112,7 +112,7 @@ def sculpting(name, f_pred):
     tmp_hists = {t:{} for t in thresholds}
     f_vars2d = {
       'msd' : (lambda x : (x['singletons'][:,config.gen_singletons['msd']], f_pred(x)),
-               np.arange(40,400,20.),
+               np.arange(0,400,20.),
                np.arange(0,1,0.0001)),
       'pt' : (lambda x : (x['singletons'][:,config.gen_singletons['pt']], f_pred(x)),
                np.arange(400,1000,50.),
