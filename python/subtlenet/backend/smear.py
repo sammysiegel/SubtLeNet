@@ -8,6 +8,9 @@ _normal = np.random.normal
 
 def gauss(arr, mu, sigma):
     # shape of arr is (n_batch, n_particles, n_features)
+    if sigma == 0:
+        arr[:,:,:4] += mu
+        return arr 
     if isinstance(mu, Number):
         mu = mu * np.ones(arr.shape[:-1])
     else:
