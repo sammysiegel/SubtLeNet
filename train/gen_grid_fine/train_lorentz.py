@@ -7,41 +7,44 @@ environ['KERAS_BACKEND'] = 'tensorflow'
 import numpy as np
 import signal
 
-from keras.layers import Input, Dense, Dropout, concatenate, LSTM, BatchNormalization, Conv1D, concatenate, CuDNNLSTM
 from keras.models import Model 
 from keras.callbacks import ModelCheckpoint, LambdaCallback, TensorBoard
 from keras.optimizers import Adam, SGD
 from keras.utils import np_utils
 from keras import backend as K
+from keras.utils import plot_model
 K.set_image_data_format('channels_last')
 
 from subtlenet import config 
-from subtlenet.generators.gen import make_coll, generate, get_dims
-import subtlenet.generators.gen as generator
-from paths import basedir 
+from subtlenet.generators.gen_4vec import make_coll, generate, get_dims
+from subtlenet.backend.keras_layers import *
+from subtlenet.backend.layers import *
 
 ''' 
 some global definitions
 ''' 
 
-NEPOCH = 50
-generator.truncate = int(argv[1])
-config.limit = int(argv[2])
-APOSTLE = 'v4_trunc%i_limit%i'%(generator.truncate, config.limit)
-system('cp %s particle_models/train_%s.py'%(argv[0], APOSTLE))
-print 'training',APOSTLE
+NEPOCH = 20
+APOSTLE = 'v3'
+system('cp %s lorentz_models/train_%s.py'%(argv[0], APOSTLE))
+#config.limit = 20
+#config.DEBUG = True
 
 ''' 
 instantiate data loaders 
 ''' 
+basedir = '/data/t3serv014/snarayan/deep/v_deepgen_3/'
+#basedir = '/fastscratch/snarayan/genarrays/v_deepgen_1'
 top = make_coll(basedir + '/PARTITION/Top_*_CATEGORY.npy')
 qcd = make_coll(basedir + '/PARTITION/QCD_*_CATEGORY.npy')
 
 data = [top, qcd]
 
-dims = get_dims(top)
+dims0, dims1 = get_dims(data[0])
+
+
 '''
-first build the classifier!
+build the classifier!
 '''
 
 # set up data 
@@ -50,36 +53,43 @@ opts = {
         'learn_pt' : True,
         }
 classifier_train_gen = generate(data, partition='train', batch=500, **opts)
-classifier_validation_gen = generate(data, partition='validate', batch=2000, **opts)
+classifier_validation_gen = generate(data, partition='validate', batch=1000, **opts)
 classifier_test_gen = generate(data, partition='test', batch=10, **opts)
 test_i, test_o, test_w = next(classifier_test_gen)
 
 # build all inputs
-input_particles  = Input(shape=(dims[1], dims[2]), name='input_particles')
+input_4vec  = Input(shape=(dims0[1], dims0[2]), name='input_4vec')
+input_misc  = Input(shape=(dims1[1], dims1[2]), name='input_misc')
 input_mass = Input(shape=(1,), name='input_mass')
 input_pt = Input(shape=(1,), name='input_pt')
-inputs = [input_particles, input_mass, input_pt]
+inputs = [input_4vec, input_misc, input_mass, input_pt]
 
-# now build the particle network
-h = BatchNormalization(momentum=0.6, name='particles_input_bnorm')(input_particles)
-h = Conv1D(32, 2, activation='relu', name='particles_conv0', kernel_initializer='lecun_uniform', padding='same')(h)
-h = BatchNormalization(momentum=0.6, name='particles_conv0_bnorm')(h)
-h = Conv1D(16, 4, activation='relu', name='particles_conv1', kernel_initializer='lecun_uniform', padding='same')(h)
-h = BatchNormalization(momentum=0.6, name='particles_conv1_bnorm')(h)
-h = CuDNNLSTM(100, name='particles_lstm')(h)
-#h = Dropout(0.1)(h)
-h = BatchNormalization(momentum=0.6, name='particles_lstm_norm')(h)
-h = Dense(100, activation='relu',name='particles_lstm_dense',kernel_initializer='lecun_uniform')(h)
-particles_final = BatchNormalization(momentum=0.6,name='particles_lstm_dense_norm')(h)
+h = DenseBroadcast(32, activation='linear')(input_4vec)
+#h = input_4vec
+h = concatenate([input_4vec, h], axis=1)
+
+# now build the 4-vector networks
+h = LorentzInner(name='lorentz_inner', return_sequences=True)(h)
+h= Flatten()(h)
+
+h = Dense(256, activation='relu',name='lorentz_dense1',kernel_initializer='lecun_uniform')(h)
+h = Dropout(0.1)(h)
+particles_final = BatchNormalization(momentum=0.6,name='lorentz_dense_norm1')(h)
+h = Dense(256, activation='relu',name='lorentz_dense2',kernel_initializer='lecun_uniform')(h)
+h = Dropout(0.1)(h)
+particles_final = BatchNormalization(momentum=0.6,name='lorentz_dense_norm2')(h)
+h = Dense(256, activation='relu',name='lorentz_dense3',kernel_initializer='lecun_uniform')(h)
+h = Dropout(0.1)(h)
+particles_final = BatchNormalization(momentum=0.6,name='lorentz_dense_norm3')(h)
 
 # merge everything
 to_merge = [particles_final, input_mass, input_pt]
 h = concatenate(to_merge)
 
 for i in xrange(1,5):
-    h = Dense(50, activation='relu',name='final_dense%i'%i)(h)
-#    if i%2:
-#        h = Dropout(0.1)(h)
+    h = Dense(64, activation='relu',name='final_dense%i'%i)(h)
+    if i%2:
+        h = Dropout(0.1)(h)
     h = BatchNormalization(momentum=0.6,name='final_dense%i_norm'%i)(h)
 
 
@@ -92,12 +102,13 @@ classifier.compile(optimizer=Adam(lr=0.0005),
 
 print '########### CLASSIFIER ############'
 classifier.summary()
+#plot_model(classifier, show_shapes=True, show_layer_names=False, to_file='/home/snarayan/public_html/figs/deepgen/v1/lorentz.png')
 print '###################################'
 
 
 # ctrl+C now triggers a graceful exit
 def save_classifier(name='classifier', model=classifier):
-    model.save('particle_models/%s_%s.h5'%(name, APOSTLE))
+    model.save('lorentz_models/%s_%s.h5'%(name, APOSTLE))
 
 def save_and_exit(signal=None, frame=None, name='classifier', model=classifier):
     save_classifier(name, model)
@@ -105,12 +116,14 @@ def save_and_exit(signal=None, frame=None, name='classifier', model=classifier):
 
 signal.signal(signal.SIGINT, save_and_exit)
 
+classifier.save('lorentz_models/untrained.h5')
+
 classifier.fit_generator(classifier_train_gen, 
                          steps_per_epoch=3000, 
                          epochs=NEPOCH,
                          validation_data=classifier_validation_gen,
                          validation_steps=1000,
-                         callbacks = [ModelCheckpoint('particle_models/%s_%s_best.h5'%('classifier',APOSTLE), save_best_only=True, verbose=True)],
+                         callbacks = [ModelCheckpoint('lorentz_models/classifier_conv_%s_{epoch:02d}_{val_loss:.5f}.h5'%APOSTLE)],
                         )
 save_classifier()
 

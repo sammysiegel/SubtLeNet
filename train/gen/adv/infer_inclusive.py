@@ -4,6 +4,8 @@
 from sys import exit, argv 
 from os import environ, system
 environ['KERAS_BACKEND'] = 'tensorflow'
+# environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID" 
+# environ["CUDA_VISIBLE_DEVICES"] = ""
 
 import numpy as np
 
@@ -15,10 +17,14 @@ from subtlenet.backend.layers import *
 
 gen.truncate = int(argv[1])
 config.limit = int(argv[2])
-name = 'trunc%i_limit%i_best'%(gen.truncate, config.limit)
-print 'inferring',name
-shallow = load_model('particle_models/classifier_v4_trunc%i_limit%i_best.h5'%(gen.truncate, config.limit),
-                     custom_objects={'DenseBroadcast':DenseBroadcast})
+name = argv[3] 
+name += '_trunc%i_limit%i_best'%(gen.truncate, config.limit)
+modelfile = 'cce_adversary/%s.h5'%(name.replace('_trunc','_v4_trunc'))
+print 'inferring',name,'from',modelfile
+model = load_model(modelfile,
+                   custom_objects={'DenseBroadcast':DenseBroadcast})
+
+model.summary()
 
 coll = gen.make_coll(basedir + '/PARTITION/*_CATEGORY.npy')
 
@@ -35,10 +41,10 @@ def predict_t(data):
             particles = data['particles'][:,:config.limit,:gen.truncate]
         else:
             particles = data['particles'][:,:,:gen.truncate]
-        r_shallow_t = shallow.predict([particles,msd,pt])[:,config.n_truth-1]
+        r_model_t = model.predict([particles,msd,pt])[:,config.n_truth-1]
     else:
-        r_shallow_t = np.empty((0,))
+        r_model_t = np.empty((0,))
 
-    return r_shallow_t 
+    return r_model_t 
 
 coll.infer(['singletons','particles'], f=predict_t, name=name, partition='test')

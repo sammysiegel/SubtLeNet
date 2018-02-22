@@ -25,7 +25,7 @@ from paths import basedir
 some global definitions
 ''' 
 
-NEPOCH = 50
+NEPOCH = 10
 APOSTLE = 'v4_nopt'
 system('cp %s shallow_models/train_%s.py'%(argv[0], APOSTLE))
 

@@ -25,7 +25,7 @@ from paths import basedir
 some global definitions
 ''' 
 
-NEPOCH = 50
+NEPOCH = 10
 APOSTLE = 'v4_nopt'
 system('cp %s shallow_models/train_%s.py'%(argv[0], APOSTLE))
 
@@ -70,7 +70,6 @@ def save_classifier(name='shallow', model=classifier):
 
 def save_and_exit(signal=None, frame=None, name='shallow', model=classifier):
     save_classifier(name, model)
-    flog.close()
     exit(1)
 
 signal.signal(signal.SIGINT, save_and_exit)

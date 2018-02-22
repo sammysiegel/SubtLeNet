@@ -6,13 +6,13 @@ mpl.use('cairo')
 import matplotlib.pylab as pl 
 from matplotlib.colors import LogNorm 
 from matplotlib import pyplot as plt
-#import seaborn
+import seaborn
 
 DOPDF = True
 
 ## general layout                                                                                                                      
-#seaborn.set(style="ticks")
-#seaborn.set_context("poster")
+seaborn.set(style="ticks")
+seaborn.set_context("poster")
 mpl.rcParams['axes.linewidth'] = 1.25
 fig_size = plt.rcParams['figure.figsize']
 fig_size[0] = 10
@@ -20,6 +20,10 @@ fig_size[1] = 9
 plt.rcParams['figure.figsize'] = fig_size
 
 ## plotting
+
+
+default_colors = np.concatenate([pl.cm.tab10(np.linspace(0,1,10)),
+                                 pl.cm.Dark2(np.linspace(0,1,9))])
 
 def sanitize_mask(x):
     return x==x
@@ -211,7 +215,6 @@ class NH2(object):
                               bins=(self.binsx, self.binsy), 
                               weights=w2, 
                               normed=False)[0]
-        # print hist 
         # over/underflow bins are zeroed out
         self._content += np.lib.pad(hist, (1,1), 'constant', constant_values=0) 
         self._sumw2 += np.lib.pad(herr, (1,1), 'constant', constant_values=0) 
@@ -233,9 +236,11 @@ class NH2(object):
                   )
         plt.colorbar()
         if xlabel:
-            plt.xlabel(xlabel)
+            plt.xlabel(xlabel, fontsize=24)
         if ylabel:
-            plt.ylabel(ylabel)
+            plt.ylabel(ylabel, fontsize=24)
+        ax.set_ylim(bottom=0)
+        plt.draw()
         if output:
             print 'Creating',output
             plt.savefig(output+'.png',bbox_inches='tight',dpi=100)
@@ -249,22 +254,35 @@ class NH2(object):
 class Plotter(object):
     def __init__(self):
         self.hists = []
+        self.ymin = None
+        self.ymax = None
     def add_hist(self, hist, label, plotstyle):
         self.hists.append((hist, label, plotstyle))
     def clear(self):
         plt.clf()
         self.hists = [] 
+        self.ymin = None
+        self.ymax = None
     def plot(self, xlabel=None, ylabel=None, output=None, errors=True, logy=False):
         plt.clf()
+        ax = plt.gca()
         for hist, label, plotstyle in self.hists:
             hist.plot(color=plotstyle, label=label, errors=errors)
         if xlabel:
-            plt.xlabel(xlabel)
+            plt.xlabel(xlabel, fontsize=24)
         if ylabel:
-            plt.ylabel(ylabel)
+            plt.ylabel(ylabel, fontsize=24)
         if logy:
             plt.yscale('log', nonposy='clip')
-        plt.legend(loc=0)
+        plt.legend(loc=0, fontsize=20)
+        ax.tick_params(axis='both', which='major', labelsize=20)
+        if self.ymax is not None:
+            ax.set_ylim(top=self.ymax)
+        if self.ymin is not None:
+            ax.set_ylim(bottom=self.ymin)
+        elif not logy:
+            ax.set_ylim(bottom=0)
+        plt.draw()
         if 'output':
             print 'Creating',output
             plt.savefig(output+'.png',bbox_inches='tight',dpi=100)
@@ -283,18 +301,32 @@ class Roccer(object):
         self.axis = [0,1,0.0005,1]
         self.yticks = [10**x for x in xrange(-5,1)]
         self.yticklabels = [('1' if x==0 else r'$10^{%i}$'%x) for x in xrange(-5,1)]
-    def add_vars(self, sig_hists, bkg_hists, labels, plotstyles=None):
+    def add_vars(self, sig_hists, bkg_hists, labels, order=None):
+        if order is None:
+            order = sorted(sig_hists)
         try:
-            for h in sorted(sig_hists):
+            for h in order: 
                 try:
-                    if plotstyles is None:
-                        self.cfgs.append((sig_hists[h], bkg_hists[h], labels[h], None))
+                    label = labels[h]
+                    if type(label) == str:
+                        self.cfgs.append((sig_hists[h], bkg_hists[h], label, None, '-'))
+                    elif len(label) == 1:
+                        self.cfgs.append((sig_hists[h], bkg_hists[h], label[0], None, '-'))
+                    elif len(label) == 2:
+                        self.cfgs.append((sig_hists[h], bkg_hists[h], label[0], label[1], '-'))
                     else:
-                        self.cfgs.append((sig_hists[h], bkg_hists[h], labels[h], plotstyles[h]))
+                        self.cfgs.append((sig_hists[h], bkg_hists[h], label[0], label[1], label[2]))
                 except KeyError:
                     pass # something wasn't provided - skip!
         except TypeError as e :#only one sig_hist was handed over - not iterable
-            self.cfgs.append((sig_hists,bkg_hists,labels,plotstyles))
+            if type(labels) == str:
+                self.cfgs.append((sig_hists[h], bkg_hists[h], labels, None, '-'))
+            elif len(labels) == 1:
+                self.cfgs.append((sig_hists[h], bkg_hists[h], labels[0], None, '-'))
+            elif len(labels) == 2:
+                self.cfgs.append((sig_hists[h], bkg_hists[h], labels[0], labels[1], '-'))
+            else:
+                self.cfgs.append((sig_hists[h], bkg_hists[h], labels[0], labels[1], labels[2]))
     def clear(self):
         self.cfgs = []
     def plot(self, output):
@@ -307,7 +339,7 @@ class Roccer(object):
 
         colors = pl.cm.tab10(np.linspace(0,1,len(self.cfgs)))
 
-        for i, (sig_hist, bkg_hist, label, plotstyle) in enumerate(self.cfgs):
+        for i, (sig_hist, bkg_hist, label, customcolor, linestyle) in enumerate(self.cfgs):
             h_sig = sig_hist
             h_bkg = bkg_hist
             rmin = h_sig.bins[0]
@@ -333,16 +365,20 @@ class Roccer(object):
                 epsilons_bkg.append(ebkg)
                 if ebkg < min_value and ebkg > 0:
                     min_value = ebkg
-            color = colors[i]
-            if plotstyle is not None:
-                color += plotstyle 
-            plt.plot(epsilons_sig, epsilons_bkg, color=color, label=label,linewidth=2)
+            if customcolor is None:
+                color = colors[i]
+            elif type(customcolor) == int:
+                color = default_colors[customcolor]
+            else:
+                color = customcolor
+            plt.plot(epsilons_sig, epsilons_bkg, color=color, label=label, linewidth=2, ls=linestyle)
 
         plt.axis(self.axis)
         plt.yscale('log', nonposy='clip')
         plt.legend(loc=2, fontsize=22)
         plt.ylabel('Background fake rate', fontsize=24)
         plt.xlabel('Signal efficiency', fontsize=24)
+        ax.tick_params(axis='both', which='major', labelsize=20)
         ax.set_yticks(self.yticks)
         ax.set_yticklabels(self.yticklabels)
 

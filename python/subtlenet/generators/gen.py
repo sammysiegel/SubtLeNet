@@ -25,7 +25,8 @@ def generate(collections, partition='train', batch=32,
              repartition=True, mask=False, 
              decorr_mass=False, decorr_pt=False,
              learn_mass=False, learn_pt=False,
-             normalize=False):
+             normalize=False,
+             smear_params=None):
     small_batch = max(1, int(batch / len(collections)))
     generators = {c:c.generator(components=['singletons', 'particles', c.weight,'truth'],
                                 partition=partition, 
@@ -54,21 +55,25 @@ def generate(collections, partition='train', batch=32,
         weights = []
         for c in collections:
             data = {k:v.data for k,v in next(generators[c]).iteritems()}
+            i = []
+
             # the last element of the particle feature vector is really truth info - do not train!
-            if config.limit:
-                i = [data['particles'][:,:config.limit,:truncate]]
-            else:
-                i = [data['particles']][:,:,:truncate]
+            particles = data['particles'][:,slice(config.limit),:truncate]
+            if smear_params is not None:
+                particles = smear.gauss(particles, *smear_params)
+            i.append(particles)
+
             if learn_mass:
                 i.append(data['singletons'][:,msd_index] * msd_norm_factor)
             if learn_pt:
                 i.append((data['singletons'][:,pt_index] - config.min_pt) * pt_norm_factor)
+
             inputs.append(i)
             
             nprongs = np_utils.to_categorical(
                     np.clip(
-                        data['truth'][:,truths['nprongs']].astype(np.int), 
-                        0, config.n_truth
+                            data['truth'][:,truths['nprongs']].astype(np.int), 
+                            0, config.n_truth
                         ),
                     config.n_truth
                 )

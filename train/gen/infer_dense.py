@@ -15,9 +15,9 @@ from subtlenet.backend.layers import *
 
 gen.truncate = int(argv[1])
 config.limit = int(argv[2])
-name = 'trunc%i_limit%i_best'%(gen.truncate, config.limit)
+name = 'dense'
 print 'inferring',name
-shallow = load_model('particle_models/classifier_v4_trunc%i_limit%i_best.h5'%(gen.truncate, config.limit),
+shallow = load_model('dense_models/classifier_v4_trunc%i_limit%i_best.h5'%(gen.truncate, config.limit),
                      custom_objects={'DenseBroadcast':DenseBroadcast})
 
 coll = gen.make_coll(basedir + '/PARTITION/*_CATEGORY.npy')
