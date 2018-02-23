@@ -34,6 +34,7 @@ def generate(collections, partition='train', batch=32,
                                 repartition=repartition,
                                 normalize=normalize) 
                     for c in collections}
+
     msd_index = config.gen_singletons['msd']
     pt_index = config.gen_singletons['pt']
     msd_norm_factor = 1. / config.max_mass 
@@ -49,6 +50,14 @@ def generate(collections, partition='train', batch=32,
                  ).astype(np.int)
         onehot = np_utils.to_categorical(binned, config.n_decorr_bins)
         return onehot
+
+    smearer = None 
+    if smear_params is not None:
+        if len(smear_params) == 2:
+            smearer = lambda x : smear.gauss(x, *smear_params)
+        elif len(smear_params) == 4:
+            smearer = smear.CaloSmear(*smear_params)
+
     while True: 
         inputs = []
         outputs = []
@@ -59,8 +68,8 @@ def generate(collections, partition='train', batch=32,
 
             # the last element of the particle feature vector is really truth info - do not train!
             particles = data['particles'][:,slice(config.limit),:truncate]
-            if smear_params is not None:
-                particles = smear.gauss(particles, *smear_params)
+            if smearer is not None:
+                particles = smearer(particles)
             i.append(particles)
 
             if learn_mass:

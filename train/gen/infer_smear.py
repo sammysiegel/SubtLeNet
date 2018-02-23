@@ -18,12 +18,12 @@ gen.truncate = int(argv[1])
 config.limit = int(argv[2])
 name = 'trunc%i_limit%i_best'%(gen.truncate, config.limit)
 print 'inferring',name
-shallow = load_model('particle_models/classifier_v4_trunc%i_limit%i_best.h5'%(gen.truncate, config.limit),
+shallow = load_model('smeared_models/classifier_v4_trunc%i_limit%i_best.h5'%(gen.truncate, config.limit),
                      custom_objects={'DenseBroadcast':DenseBroadcast})
 
 coll = gen.make_coll(basedir + '/PARTITION/*_CATEGORY.npy')
 
-calo = CaloSmear(0, 0.000001, 0, 0.03)
+calo = CaloSmear(0, 0.01, 0, lambda x : 1./np.sqrt(x))
 
 msd_norm_factor = 1. / config.max_mass
 pt_norm_factor = 1. / (config.max_pt - config.min_pt)

@@ -19,7 +19,7 @@ def gauss(arr, mu, sigma):
         sigma = sigma * np.ones(arr.shape[:-1])
     else:
         sigma = sigma(arr[:,:,3], arr[:,:,6]) # f'n of particle energy and type 
-    bias = _normal(mu, sigma) + 1 # treat it as a fractional resolution
+    bias = np.clip(_normal(mu, sigma) + 1, 0, 2) # treat it as a fractional resolution
     arr[:,:,:4] *= bias.reshape(arr.shape[:-1] + (-1,)) 
     return arr 
     
@@ -30,7 +30,7 @@ class _Callable(object):
             self.f = lambda x : f
         else:
             self.f = f
-    def __call__(self, args):
+    def __call__(self, *args):
         return self.f(*args)
 
 class CaloSmear(object):
@@ -43,8 +43,8 @@ class CaloSmear(object):
 
     @staticmethod
     def _is_neutral(ptype):
-        # forgive me 
-        ptype = ((ptype + 2.5958684827557796) * 2.2772611292950851).astype(np.int)
+        # forgive me, for I have sinned 
+        ptype = (2.5958684827557796 + (ptype * 2.2772611292950851)).astype(np.int)
         return np.logical_or(ptype == 0,                 # calo object
                              np.logical_or(ptype == 3,   # photon
                                            ptype == 4))  # neutral hadron
