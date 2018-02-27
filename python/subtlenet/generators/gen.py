@@ -39,17 +39,26 @@ def generate(collections, partition='train', batch=32,
     pt_index = config.gen_singletons['pt']
     msd_norm_factor = 1. / config.max_mass 
     pt_norm_factor = 1. / (config.max_pt - config.min_pt)
-    def xform_mass(x):
-        binned = (np.minimum(x, config.max_mass) * msd_norm_factor * (config.n_decorr_bins - 1)).astype(np.int)
-        onehot = np_utils.to_categorical(binned, config.n_decorr_bins)
-        return onehot
-    def xform_pt(x):
-        binned = (np.minimum(x-config.min_pt, config.max_pt-config.min_pt) 
-                  * pt_norm_factor 
-                  * (config.n_decorr_bins - 1)
-                 ).astype(np.int)
-        onehot = np_utils.to_categorical(binned, config.n_decorr_bins)
-        return onehot
+    if config.bin_decorr:
+        def xform_mass(x):
+            binned = (np.minimum(x, config.max_mass) * msd_norm_factor * (config.n_decorr_bins - 1)).astype(np.int)
+            onehot = np_utils.to_categorical(binned, config.n_decorr_bins)
+            return onehot
+        def xform_pt(x):
+            binned = (np.minimum(x-config.min_pt, config.max_pt-config.min_pt) 
+                      * pt_norm_factor 
+                      * (config.n_decorr_bins - 1)
+                     ).astype(np.int)
+            onehot = np_utils.to_categorical(binned, config.n_decorr_bins)
+            return onehot
+    else:
+        def xform_mass(x):
+            return np.minimum(x, config.max_mass) * msd_norm_factor * (config.n_decorr_bins - 1)
+        def xform_pt(x):
+            return (np.minimum(x-config.min_pt, config.max_pt-config.min_pt) 
+                      * pt_norm_factor 
+                      * (config.n_decorr_bins - 1)
+                     )
 
     smearer = None 
     if smear_params is not None:

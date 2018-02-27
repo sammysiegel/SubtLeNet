@@ -37,3 +37,14 @@ def sculpting_kl_penalty(y_true, y_pred):
                          P_weight = weight)
     return loss * K.ones_like(weight[:,0]) # make it of dimension (batch_size,)
 
+
+def emd(p, q, norm=K.abs):
+    # p and q are 1-hot vectors of two probability distributions.
+    # assume they are normalized to one.
+    # typically one is a collection of delta functions.
+    # TODO: implement a metric on R
+    P = K.cumsum(p, axis=-1)
+    Q = K.cumsum(q, axis=-1)
+
+    d = K.sum(norm(P - Q), axis=-1)
+    return d

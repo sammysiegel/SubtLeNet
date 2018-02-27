@@ -6,6 +6,7 @@ from keras.engine import Layer, InputSpec
 from keras.layers import RNN, Dense
 from keras import activations, initializers, regularizers, constraints
 import tensorflow as tf
+from .. import config
 
 
 class DenseBroadcast(Layer):
@@ -494,18 +495,18 @@ class Adversary(object):
         self.n_output_bins = n_output_bins
         self.n_outputs = n_outputs 
         self._outputs = None 
+        self._dense = []
 
     def __call__(self, inputs):
         self._reverse = GradReverseLayer(self.scale)(inputs)
 
         n_outputs = self.n_outputs
-        if False and n_outputs == 1:
-            self._dense1 = Dense(5, activation='tanh')(self._reverse)
-            self._dense2 = Dense(10, activation='tanh')(self._dense1)
-            self._outputs = [Dense(self.n_output_bins, activation='softmax')(self._dense2)]
-            return self._outputs[0]
+        self._dense.append( [Dense(5, activation='relu')(self._reverse) for _ in xrange(n_outputs)] )
+        self._dense.append( [Dense(10, activation='relu')(d) for d in self._dense[-1]] )
+        self._dense.append( [Dense(10, activation='relu')(d) for d in self._dense[-1]] )
+        self._dense.append( [Dense(10, activation='tanh')(d) for d in self._dense[-1]] )
+        if config.bin_decorr:
+            self._outputs = [Dense(self.n_output_bins, activation='softmax')(d) for d in self._dense[-1]]
         else:
-            self._dense1 = [Dense(5, activation='tanh')(self._reverse) for _ in xrange(n_outputs)]
-            self._dense2 = [Dense(10, activation='tanh')(d) for d in self._dense1]
-            self._outputs = [Dense(self.n_output_bins, activation='softmax')(d) for d in self._dense2]
-            return self._outputs 
+            self._outputs = [Dense(1, activation='linear')(d) for d in self._dense[-1]]
+        return self._outputs 

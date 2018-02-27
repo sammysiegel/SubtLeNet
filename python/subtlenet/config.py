@@ -9,6 +9,7 @@ weights_scale = None     # honestly don't remember
 limit = None             # whether to limit the number of input particles
 
 # decorrelation
+bin_decorr = True
 n_decorr_bins = 15       # granularity of binning
 max_mass = 300.          # maximum msd
 max_rho = 7.5            # maximum rho

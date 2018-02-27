@@ -28,6 +28,8 @@ components = [
               'shallow_nopt', 
               'baseline_trunc4_limit50_best', 
               'decorrelated_trunc4_limit50_best', 
+              'mse_decorrelated_trunc4_limit50_best', 
+              'emd_decorrelated_trunc4_limit50_best', 
               ]
 
 colls = {
@@ -57,22 +59,22 @@ f_vars = {
     'shallow_nopt_roc' : (lambda x : x['shallow_nopt'], np.arange(0,1.2,0.0001), r'Shallow (no $p_{T}$) classifier'),
     'baseline_4_50'  : (lambda x : x['baseline_trunc4_limit50_best'], np.arange(0,1,0.01), 'Baseline (4,10)'),
     'decorrelated_4_50'  : (lambda x : x['decorrelated_trunc4_limit50_best'], np.arange(0,1,0.01), 'Decorr (4,10)'),
+    'mse_decorrelated_4_50'  : (lambda x : x['mse_decorrelated_trunc4_limit50_best'], np.arange(0,1,0.01), 'Decorr (4,10)'),
+    'emd_decorrelated_4_50'  : (lambda x : x['emd_decorrelated_trunc4_limit50_best'], np.arange(0,1,0.01), 'Decorr (4,10)'),
     'baseline_4_50_roc'  : (lambda x : x['baseline_trunc4_limit50_best'], np.arange(-0.2,1.2,0.00001), 'Baseline (4,10)'),
     'decorrelated_4_50_roc'  : (lambda x : x['decorrelated_trunc4_limit50_best'], np.arange(-0.2,1.2,0.00001), 'Decorr (4,10)'),
+    'mse_decorrelated_4_50_roc'  : (lambda x : x['mse_decorrelated_trunc4_limit50_best'], np.arange(-0.2,1.2,0.00001), 'Decorr (4,10)'),
+    'emd_decorrelated_4_50_roc'  : (lambda x : x['emd_decorrelated_trunc4_limit50_best'], np.arange(-0.2,1.2,0.00001), 'Decorr (4,10)'),
 }
 
 roc_vars = {
             'tau32':(r'$\tau_{32}$',0,':'),
             'tau32sd':(r'$\tau_{32}^\mathrm{SD}$',2,':'),
             'baseline_4_50_roc':('Baseline (4,50)',4),
-            'decorrelated_4_50_roc':('Decorr (4,50)',4,'--'),
-            'lstm4_50_roc':('LSTM (4,50)',5),
-            'lstm4_500_roc':('LSTM (4,100)',6),
-            'lstm7_50_roc':('LSTM (7,50)',7),
-            'lstm7_100_roc':('LSTM (7,100)',3),
+            'decorrelated_4_50_roc':('Decorr (4,50)',5),
+            'mse_decorrelated_4_50_roc':('MSE Decorr (4,50)',6),
+            'emd_decorrelated_4_50_roc':('EMD Decorr (4,50)',7),
             'shallow_nopt_roc':('Shallow',9,'--'),
-            'dense7_50_roc':('Dense (7,50)',10,'--'),
-            'dense4_500_roc':('Dense (4,100)',11,'--'),
             }
 
 order = [
@@ -81,6 +83,8 @@ order = [
         'shallow_nopt_roc',
         'baseline_4_50_roc',
         'decorrelated_4_50_roc',
+        'mse_decorrelated_4_50_roc',
+        'emd_decorrelated_4_50_roc',
         ]
 
 # unmasked first
@@ -168,7 +172,10 @@ def sculpting(name, f_pred):
 
 sculpting('tau32sd', f_pred = f_vars['tau32sd'][0]) 
 sculpting('decorrelated_4_50', f_pred = f_vars['decorrelated_4_50'][0])
+sculpting('mse_decorrelated_4_50', f_pred = f_vars['mse_decorrelated_4_50'][0])
+sculpting('emd_decorrelated_4_50', f_pred = f_vars['emd_decorrelated_4_50'][0])
 sculpting('baseline_4_50', f_pred = f_vars['baseline_4_50'][0])
+sculpting('shallow_nopt', f_pred = f_vars['shallow_nopt'][0])
 
 # mask the top mass
 def f_mask(data):

@@ -8,6 +8,9 @@ def make_coll(fpath):
     coll.add_categories(['singletons'], fpath)
     return coll
 
+
+print config.gen_default_variables
+
 def generate(collections, 
              variables=config.gen_default_variables,
              mus=config.gen_default_mus,
@@ -28,8 +31,9 @@ def generate(collections,
                                 normalize=normalize) 
                     for c in collections}
     var_idx = [config.gen_singletons[x] for x in variables]
-    mus = np.array(mus)
-    sigmas = np.array(sigmas)
+    if (mus is not None) and (sigmas is not None):
+        mus = np.array(mus)
+        sigmas = np.array(sigmas)
     msd_index = config.gen_singletons['msd']
     pt_index = config.gen_singletons['pt']
     msd_norm_factor = 1. / config.max_mass 
@@ -52,9 +56,10 @@ def generate(collections,
         for c in collections:
             data = {k:v.data for k,v in next(generators[c]).iteritems()}
             i = [data['singletons'][:,var_idx]]
-            # need to apply osme normalization to the inputs:
-            i[0] -= mus 
-            i[0] /= sigmas 
+            if (mus is not None) and (sigmas is not None):
+                # need to apply some normalization to the inputs:
+                i[0] -= mus 
+                i[0] /= sigmas 
             
             nprongs = np_utils.to_categorical(
                     np.clip(
