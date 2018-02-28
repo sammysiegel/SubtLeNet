@@ -191,7 +191,7 @@ def sculpting(name, f_pred):
 # mask the top mass
 def f_mask(data):
     mass = data['singletons'][:,config.gen_singletons['msd']]
-    return (mass > 110) & (mass < 210)
+    return (mass > 150) & (mass < 200)
 
 hists = {}
 for k,v in colls.iteritems():

@@ -1,2 +1,2 @@
 import config
-__all__ = ['config', 'backend', 'generators', 'utils']
+__all__ = ['config', 'backend', 'generators', 'utils', 'models']
