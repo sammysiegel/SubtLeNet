@@ -501,9 +501,9 @@ class Adversary(object):
         self._reverse = GradReverseLayer(self.scale)(inputs)
 
         n_outputs = self.n_outputs
-        self._dense.append( [Dense(5, activation='relu')(self._reverse) for _ in xrange(n_outputs)] )
-        self._dense.append( [Dense(10, activation='relu')(d) for d in self._dense[-1]] )
-        self._dense.append( [Dense(10, activation='relu')(d) for d in self._dense[-1]] )
+        self._dense.append( [Dense(5, activation='tanh')(self._reverse) for _ in xrange(n_outputs)] )
+        self._dense.append( [Dense(10, activation='tanh')(d) for d in self._dense[-1]] )
+        self._dense.append( [Dense(10, activation='tanh')(d) for d in self._dense[-1]] )
         self._dense.append( [Dense(10, activation='tanh')(d) for d in self._dense[-1]] )
         if config.bin_decorr:
             self._outputs = [Dense(self.n_output_bins, activation='softmax')(d) for d in self._dense[-1]]
