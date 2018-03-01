@@ -9,12 +9,7 @@ def make_coll(fpath):
     return coll
 
 
-print config.gen_default_variables
-
 def generate(collections, 
-             variables=config.gen_default_variables,
-             mus=config.gen_default_mus,
-             sigmas=config.gen_default_sigmas,
              partition='train', 
              batch=32, 
              repartition=True,
@@ -23,6 +18,9 @@ def generate(collections,
              kl_decorr_mass=False,
              kl_decorr_pt=False,
              normalize=False):
+    variables = config.gen_default_variables
+    mus = config.gen_default_mus
+    sigmas = config.gen_default_sigmas
     small_batch = max(1, int(batch / len(collections)))
     generators = {c:c.generator(components=['singletons', c.weight,'truth'],
                                 partition=partition, 

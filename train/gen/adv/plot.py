@@ -12,7 +12,8 @@ import numpy as np
 from subtlenet import config, utils
 from subtlenet.backend import obj 
 from subtlenet.generators.gen import make_coll
-import paths 
+basedir = environ['BASEDIR']
+figsdir = environ['FIGSDIR']
 
 n_batches = 500
 partition = 'test'
@@ -20,21 +21,28 @@ partition = 'test'
 p = utils.Plotter()
 r = utils.Roccer()
 
-OUTPUT = paths.figsdir + '/' 
+OUTPUT = figsdir + '/' 
 system('mkdir -p %s'%OUTPUT)
 
 components = [
               'singletons',
               'shallow_nopt', 
-              'baseline_trunc4_limit50_best', 
-              'decorrelated_trunc4_limit50_best', 
-              'mse_decorrelated_trunc4_limit50_best', 
-              'emd_decorrelated_trunc4_limit50_best', 
+#               'baseline_trunc4_limit50_best', 
+#               'decorrelated_trunc4_limit50_best', 
+#               'mse_decorrelated_trunc4_limit50_best', 
+#               'emd_decorrelated_trunc4_limit50_best', 
+              'baseline',
+              'emd',
+              'emd_clf_best',
+              'mean_squared_error',
+              'mean_squared_error_clf_best',
+              'categorical_cross_entropy',
+              'categorical_cross_entropy_clf_best',
               ]
 
 colls = {
-    't' : make_coll(paths.basedir + '/PARTITION/Top_*_CATEGORY.npy',categories=components),
-    'q' : make_coll(paths.basedir + '/PARTITION/QCD_*_CATEGORY.npy',categories=components),
+    't' : make_coll(basedir + '/PARTITION/Top_*_CATEGORY.npy',categories=components),
+    'q' : make_coll(basedir + '/PARTITION/QCD_*_CATEGORY.npy',categories=components),
 }
 
 
@@ -57,34 +65,46 @@ f_vars = {
     'pt'        : (lambda x : access(x, 'pt'), np.arange(250.,1000.,50.), r'$p_\mathrm{T}$ [GeV]'),
     'shallow_nopt' : (lambda x : x['shallow_nopt'], np.arange(0,1.2,0.01), r'Shallow (no $p_{T}$) classifier'),
     'shallow_nopt_roc' : (lambda x : x['shallow_nopt'], np.arange(0,1.2,0.0001), r'Shallow (no $p_{T}$) classifier'),
-    'baseline_4_50'  : (lambda x : x['baseline_trunc4_limit50_best'], np.arange(0,1,0.01), 'Baseline (4,10)'),
-    'decorrelated_4_50'  : (lambda x : x['decorrelated_trunc4_limit50_best'], np.arange(0,1,0.01), 'Decorr (4,10)'),
-    'mse_decorrelated_4_50'  : (lambda x : x['mse_decorrelated_trunc4_limit50_best'], np.arange(0,1,0.01), 'Decorr (4,10)'),
-    'emd_decorrelated_4_50'  : (lambda x : x['emd_decorrelated_trunc4_limit50_best'], np.arange(0,1,0.01), 'Decorr (4,10)'),
-    'baseline_4_50_roc'  : (lambda x : x['baseline_trunc4_limit50_best'], np.arange(-0.2,1.2,0.00001), 'Baseline (4,10)'),
-    'decorrelated_4_50_roc'  : (lambda x : x['decorrelated_trunc4_limit50_best'], np.arange(-0.2,1.2,0.00001), 'Decorr (4,10)'),
-    'mse_decorrelated_4_50_roc'  : (lambda x : x['mse_decorrelated_trunc4_limit50_best'], np.arange(-0.2,1.2,0.00001), 'Decorr (4,10)'),
-    'emd_decorrelated_4_50_roc'  : (lambda x : x['emd_decorrelated_trunc4_limit50_best'], np.arange(-0.2,1.2,0.00001), 'Decorr (4,10)'),
+    'baseline'  : (lambda x : x['baseline'], np.arange(0,1,0.01), 'Decorr (4,10)'),
+    'baseline_roc'  : (lambda x : x['baseline'], np.arange(0,1,0.0001), 'Decorr (4,10)'),
+    'emd'  : (lambda x : x['emd'], np.arange(0,1,0.01), 'Decorr (4,10)'),
+    'emd_clf_best'  : (lambda x : x['emd_clf_best'], np.arange(0,1,0.01), 'Decorr (4,10)'),
+    'emd_roc'  : (lambda x : x['emd'], np.arange(0,1,0.0001), 'Decorr (4,10)'),
+    'emd_clf_best_roc'  : (lambda x : x['emd_clf_best'], np.arange(0,1,0.0001), 'Decorr (4,10)'),
+    'mean_squared_error'  : (lambda x : x['mean_squared_error'], np.arange(0,1,0.01), 'Decorr (4,10)'),
+    'mean_squared_error_clf_best'  : (lambda x : x['mean_squared_error_clf_best'], np.arange(0,1,0.01), 'Decorr (4,10)'),
+    'mean_squared_error_roc'  : (lambda x : x['mean_squared_error'], np.arange(0,1,0.0001), 'Decorr (4,10)'),
+    'mean_squared_error_clf_best_roc'  : (lambda x : x['mean_squared_error_clf_best'], np.arange(0,1,0.0001), 'Decorr (4,10)'),
+    'categorical_cross_entropy'  : (lambda x : x['categorical_cross_entropy'], np.arange(0,1,0.01), 'Decorr (4,10)'),
+    'categorical_cross_entropy_clf_best'  : (lambda x : x['categorical_cross_entropy_clf_best'], np.arange(0,1,0.01), 'Decorr (4,10)'),
+    'categorical_cross_entropy_roc'  : (lambda x : x['categorical_cross_entropy'], np.arange(0,1,0.0001), 'Decorr (4,10)'),
+    'categorical_cross_entropy_clf_best_roc'  : (lambda x : x['categorical_cross_entropy_clf_best'], np.arange(0,1,0.0001), 'Decorr (4,10)'),
 }
 
 roc_vars = {
             'tau32':(r'$\tau_{32}$',0,':'),
             'tau32sd':(r'$\tau_{32}^\mathrm{SD}$',2,':'),
-            'baseline_4_50_roc':('Baseline (4,50)',4),
-            'decorrelated_4_50_roc':('Decorr (4,50)',5),
-            'mse_decorrelated_4_50_roc':('MSE Decorr (4,50)',6),
-            'emd_decorrelated_4_50_roc':('EMD Decorr (4,50)',7),
-            'shallow_nopt_roc':('Shallow',9,'--'),
+            'shallow_nopt_roc':('Shallow',3,':'),
+            'baseline_roc':('Baseline',4),
+            'emd_roc':('EMD',7),
+            'emd_clf_best_roc':('EMD best',7,'--'),
+            'mean_squared_error_roc':('MSE',6),
+            'mean_squared_error_clf_best_roc':('MSE best',6,'--'),
+            'categorical_cross_entropy_roc':('CCE',5),
+            'categorical_cross_entropy_clf_best_roc':('CCE best',5,'--'),
             }
 
 order = [
         'tau32',
         'tau32sd',
         'shallow_nopt_roc',
-        'baseline_4_50_roc',
-        'decorrelated_4_50_roc',
-        'mse_decorrelated_4_50_roc',
-        'emd_decorrelated_4_50_roc',
+        'baseline_roc',
+        'emd_roc',
+        'emd_clf_best_roc',
+        'mean_squared_error_roc',
+        'mean_squared_error_clf_best_roc',
+        'categorical_cross_entropy_roc',
+        'categorical_cross_entropy_clf_best_roc',
         ]
 
 # unmasked first
@@ -115,16 +135,50 @@ r.add_vars(hists['t'],
 r.plot(**{'output':OUTPUT+'roc'})
 
 
+bkg_hists = {k:v for k,v in hists['q'].iteritems()}
+
+# mask the top mass
+def f_mask(data):
+    mass = data['singletons'][:,config.gen_singletons['msd']]
+    return (mass > 150) & (mass < 200)
+
+hists = {}
+for k,v in colls.iteritems():
+    hists[k] = v.draw(components=components,
+                      f_vars=f_vars,
+                      n_batches=n_batches, partition=partition,
+                      f_mask=f_mask)
+
+for k in hists['t']:
+    if 'roc' in k:
+        continue
+    ht = hists['t'][k]
+    hq = hists['q'][k]
+    for h in [ht, hq]:
+        h.scale()
+    p.clear()
+    p.add_hist(ht, '3-prong top', 'r')
+    p.add_hist(hq, '1-prong QCD', 'k')
+    p.plot(output=OUTPUT+'mass_'+k, xlabel=f_vars[k][2])
+
+r.clear()
+r.add_vars(hists['t'],           
+           hists['q'],
+           roc_vars,
+           order
+           )
+r.plot(**{'output':OUTPUT+'mass_roc'})
+
 
 
 # get the cuts
-thresholds = [0, 0.5, 0.75, 0.9, 0.99, 0.999]
+thresholds = [0, 0.5, 0.75, 0.9, 0.99, 0.995]
 
 def sculpting(name, f_pred):
     try:
-        h = hists['q'][name+'_roc']
+        h = bkg_hists[name+'_roc']
     except KeyError:
-        h = hists['q'][name]
+        h = bkg_hists[name]
     tmp_hists = {t:{} for t in thresholds}
     f_vars2d = {
       'msd' : (lambda x : (x['singletons'][:,config.gen_singletons['msd']], f_pred(x)),
@@ -170,43 +224,13 @@ def sculpting(name, f_pred):
             p.add_hist(tmp_hists[t][k], r'$\epsilon_\mathrm{bkg}=%.3f$'%(1-t), colors[i])
         p.plot(output=OUTPUT+'prognorm_'+name+'_'+k, xlabel=f_vars[k][2], logy=False)
 
+sculpting('emd', f_pred = f_vars['emd'][0])
+sculpting('emd_clf_best', f_pred = f_vars['emd_clf_best'][0])
+sculpting('mean_squared_error', f_pred = f_vars['mean_squared_error'][0])
+sculpting('mean_squared_error_clf_best', f_pred = f_vars['mean_squared_error_clf_best'][0])
+sculpting('categorical_cross_entropy', f_pred = f_vars['categorical_cross_entropy'][0])
+sculpting('categorical_cross_entropy_clf_best', f_pred = f_vars['categorical_cross_entropy_clf_best'][0])
 sculpting('tau32sd', f_pred = f_vars['tau32sd'][0]) 
-sculpting('decorrelated_4_50', f_pred = f_vars['decorrelated_4_50'][0])
-sculpting('mse_decorrelated_4_50', f_pred = f_vars['mse_decorrelated_4_50'][0])
-sculpting('emd_decorrelated_4_50', f_pred = f_vars['emd_decorrelated_4_50'][0])
-sculpting('baseline_4_50', f_pred = f_vars['baseline_4_50'][0])
+sculpting('baseline', f_pred = f_vars['baseline'][0])
 sculpting('shallow_nopt', f_pred = f_vars['shallow_nopt'][0])
-
-# mask the top mass
-def f_mask(data):
-    mass = data['singletons'][:,config.gen_singletons['msd']]
-    return (mass > 150) & (mass < 200)
-
-hists = {}
-for k,v in colls.iteritems():
-    hists[k] = v.draw(components=components,
-                      f_vars=f_vars,
-                      n_batches=n_batches, partition=partition,
-                      f_mask=f_mask)
-
-for k in hists['t']:
-    if 'roc' in k:
-        continue
-    ht = hists['t'][k]
-    hq = hists['q'][k]
-    for h in [ht, hq]:
-        h.scale()
-    p.clear()
-    p.add_hist(ht, '3-prong top', 'r')
-    p.add_hist(hq, '1-prong QCD', 'k')
-    p.plot(output=OUTPUT+'mass_'+k, xlabel=f_vars[k][2])
-
-r.clear()
-r.add_vars(hists['t'],           
-           hists['q'],
-           roc_vars,
-           order
-           )
-r.plot(**{'output':OUTPUT+'mass_roc'})
-
 

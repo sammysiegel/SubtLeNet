@@ -91,18 +91,25 @@ def save_and_exit(signal=None, frame=None, name='shallow', model=classifier):
 signal.signal(signal.SIGINT, save_and_exit)
 
 classifier.fit_generator(classifier_train_gen, 
-                         steps_per_epoch=5000, 
-                         epochs=20,
+                         steps_per_epoch=500, 
+                         epochs=1,
                          validation_data=classifier_validation_gen,
                          validation_steps=10,
                         )
 save_classifier(name='baseline')
 
+def f(l):
+    print l
+    return None
+
+l = LambdaCallback(on_epoch_end = lambda e,l : f(l))
+
 adversary.fit_generator(adversary_train_gen, 
-                        steps_per_epoch=5000, 
-                        epochs=20,
+                        steps_per_epoch=500, 
+                        epochs=2,
                         validation_data=adversary_validation_gen,
                         validation_steps=10,
+                        callbacks = [l],
                         )
 save_classifier(name='decorrelated')
 

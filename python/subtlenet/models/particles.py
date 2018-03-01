@@ -1,6 +1,8 @@
 #!/usr/bin/env python2.7
 
 from _common import *
+from ..generators.gen import make_coll, generate, get_dims
+from ..generators import gen as generator
 
 ''' 
 some global definitions
@@ -8,7 +10,7 @@ some global definitions
 
 NEPOCH = 50
 VERSION = 4
-MODELDIR = environ.get('MODELDIR', 'models/particles/')
+MODELDIR = environ.get('MODELDIR', 'models/') + '/particles/'
 BASEDIR = environ['BASEDIR']
 _APOSTLE = None
 train_opts = {
@@ -19,8 +21,8 @@ train_opts = {
 # must be called!
 def instantiate(trunc=4, limit=50):
     global _APOSTLE
-    generator.truncate = 4
-    config.limit = 50
+    generator.truncate = trunc
+    config.limit = limit
     _APOSTLE = 'v%i_trunc%i_limit%i'%(VERSION, generator.truncate, config.limit)
     system('mkdir -p %s/%s/'%(MODELDIR,_APOSTLE))
     system('cp -v %s %s/%s/trainer.py'%(sys.argv[0], MODELDIR, _APOSTLE))
@@ -52,8 +54,8 @@ first build the classifier!
 def setup_data(data):
     opts = {}; opts.update(train_opts)
     gen = {
-        'train' : generate(data, partition='train', batch=500, **opts),
-        'validation' : generate(data, partition='validate', batch=2000, **opts),
+        'train' : generate(data, partition='train', batch=1000, **opts),
+        'validation' : generate(data, partition='validate', batch=10000, **opts),
         'test' : generate(data, partition='test', batch=10, **opts),
         }
     return gen
@@ -128,9 +130,19 @@ def build_adversary(clf, loss, scale, w_clf, w_adv):
 
 
 # train any model
-def train(model, name, train_gen, validation_gen, callbacks=[]):
-    # ctrl+C now triggers a graceful exit
-    def save_classifier(name_=name, model_=model):
+def train(model, name, train_gen, validation_gen, save_clf_params=None):
+    if save_clf_params is not None:
+        callbacks = [PartialModelCheckpoint(file_path'%s/%s/%s_clf_best.h5'%(MODELDIR,_APOSTLE,name), 
+                                            save_best_only=True, verbose=True,
+                                            **save_clf_params)]
+        save_clf = save_clf_params['partial_model']
+    else:
+        save_clf = model
+        callbacks = []
+    callbacks += [ModelCheckpoint('%s/%s/%s_best.h5'%(MODELDIR,_APOSTLE,name), 
+                                  save_best_only=True, verbose=True)]
+
+    def save_classifier(name_=name, model_=save_clf):
         model_.save('%s/%s/%s.h5'%(MODELDIR,_APOSTLE,name_))
 
     def save_and_exit(signal=None, frame=None):
@@ -139,16 +151,12 @@ def train(model, name, train_gen, validation_gen, callbacks=[]):
 
     signal.signal(signal.SIGINT, save_and_exit)
 
-    callbacks_ = [ModelCheckpoint('%s/%s/%s_best.h5'%(MODELDIR,_APOSTLE,name), 
-                                  save_best_only=True, verbose=True)]
-    callbacks_.extend(callbacks)
-
     model.fit_generator(train_gen, 
                         steps_per_epoch=3000, 
                         epochs=NEPOCH,
                         validation_data=validation_gen,
-                        validation_steps=1000,
-                        callbacks = callbacks_,
+                        validation_steps=100,
+                        callbacks = callbacks,
                        )
     save_classifier()
 
