@@ -8,4 +8,4 @@ export PYTHONPATH=${PYTHONPATH}:${SUBTLENET}/python/ # use this for dev purposes
 export SUBTLENET_FIGSDIR="/home/snarayan/public_html/figs/deep/v1"
 mkdir -p $SUBTLENET_FIGSDIR
 
-alias npy="mypy ${SUBTLENET}/bin/npy"
+export PATH="${SUBTLENET}/bin":$PATH

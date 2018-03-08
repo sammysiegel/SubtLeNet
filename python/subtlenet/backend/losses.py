@@ -1,5 +1,6 @@
 import numpy as np
 import keras.backend as K
+import tensorflow as tf
 
 def _weighted_KL(Q_data, P_data, Q_weight=None, P_weight=None):
     if P_weight is not None:
@@ -48,3 +49,60 @@ def emd(p, q, norm=K.abs):
 
     d = K.sum(norm(P - Q), axis=-1)
     return d
+
+
+class Binner(object):
+    def __init__(self, N):
+        self._N = N
+        self._ones = K.constant(np.ones(N), shape=(1,N))
+        self._bias = K.constant(-1 * np.arange(N))
+    @staticmethod
+    def _indicator(x):
+        return (3 * K.sigmoid(x) * K.sigmoid(1 - x)) - 2
+    def __call__(self,x):
+        # x should have dimensions (batch_size,)
+        xhat = self._N * x                                            # scale into range [0,N]
+        xhat = K.dot(K.expand_dims(xhat, axis=-1), self._ones)        # reshape to (batch_size,N)
+        xhat = K.bias_add(xhat, self._bias)                           # add a bias vector, same shape
+        yhat = Binner._indicator(xhat)                                # make it an indicator of [0,1]
+        return K.softmax(yhat)
+
+
+class DistCompatibility(object):
+    @staticmethod
+    def _kl(p, q):
+        return -K.sum(p * K.log(q / p))
+    @staticmethod
+    def _loss2(p, q):
+        return K.sum(K.abs(K.log(q / p)))
+    @staticmethod
+    def _emd(p, q):
+        P = -K.cumsum(p, axis=-1) # inverted CDF
+        Q = K.cumsum(q, axis=-1)  # CDF
+        return K.sum(K.abs(K.bias_add(Q, P)))
+    def __init__(self, N_bin, N_class, loss='kl'):
+        self._N_bin = N_bin
+        self._N_class = N_class
+        self._binner = Binner(N_bin)
+        self.__name__ = type(self).__name__ # ??
+        self.loss = getattr(type(self), '_' + loss)
+    def __call__(self, y_true, y_pred):
+        # structure of y_pred[i] : [tag score] + [class truth] 
+        # structure of y_true[i] : [sample weight] + [class truth]
+        weight = y_true[:,0]
+        label = y_true[:,1:]
+        x_score = y_pred[:,0]
+        batch_size = K.shape(x_score)[0]
+
+        b_score = self._binner(x_score)    # has dimensions (batch_size, _N_bin)
+        score = tf.einsum('ij,ik->ikj', b_score, label) # (batch_size, _N_class, _N_bin)
+        P = tf.einsum('i,ijk->jk', weight, score) # (_N_class, _N_bin)
+        P = P / K.expand_dims(K.sum(P, axis=1)) # normalize along score-axis
+        P = K.clip(P, K.epsilon(), 1)
+
+        P0 = P[0,:]
+        Q = P[1:,:]
+
+        l = self.loss(P0, Q)
+
+        return l * K.ones_like(weight)

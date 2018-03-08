@@ -12,6 +12,7 @@ NEPOCH = 50
 VERSION = 4
 MODELDIR = environ.get('MODELDIR', 'models/') + '/particles/'
 BASEDIR = environ['BASEDIR']
+OPTIMIZER = 'Adam'
 _APOSTLE = None
 train_opts = {
         'learn_mass' : True,
@@ -23,7 +24,7 @@ def instantiate(trunc=4, limit=50):
     global _APOSTLE
     generator.truncate = trunc
     config.limit = limit
-    _APOSTLE = 'v%i_trunc%i_limit%i'%(VERSION, generator.truncate, config.limit)
+    _APOSTLE = 'v%s_trunc%i_limit%i'%(str(VERSION), generator.truncate, config.limit)
     system('mkdir -p %s/%s/'%(MODELDIR,_APOSTLE))
     system('cp -v %s %s/%s/trainer.py'%(sys.argv[0], MODELDIR, _APOSTLE))
     system('cp -v %s %s/%s/lib.py'%(__file__.replace('.pyc','.py'), MODELDIR, _APOSTLE))
@@ -54,8 +55,8 @@ first build the classifier!
 def setup_data(data):
     opts = {}; opts.update(train_opts)
     gen = {
-        'train' : generate(data, partition='train', batch=1000, **opts),
-        'validation' : generate(data, partition='validate', batch=10000, **opts),
+        'train' : generate(data, partition='train', batch=500, **opts),
+        'validation' : generate(data, partition='validate', batch=2000, **opts),
         'test' : generate(data, partition='test', batch=10, **opts),
         }
     return gen
@@ -64,7 +65,7 @@ def setup_adv_data(data):
     opts = {'decorr_mass':True}; opts.update(train_opts)
     gen = {
         'train' : generate(data, partition='train', batch=1000, **opts),
-        'validation' : generate(data, partition='validate', batch=10000, **opts),
+        'validation' : generate(data, partition='validate', batch=2000, **opts),
         'test' : generate(data, partition='test', batch=10, **opts),
         }
     return gen
@@ -102,7 +103,8 @@ def build_classifier(dims):
     y_hat = Dense(config.n_truth, activation='softmax', name='y_hat')(h)
 
     classifier = Model(inputs=inputs, outputs=[y_hat])
-    classifier.compile(optimizer=Adam(lr=0.0005),
+    classifier.compile(optimizer=getattr(keras_objects, OPTIMIZER)(lr=0.0002),
+    #classifier.compile(optimizer=Adam(lr=0.0002),
                        loss='categorical_crossentropy',
                        metrics=['accuracy'])
 
@@ -118,7 +120,7 @@ def build_adversary(clf, loss, scale, w_clf, w_adv):
     kin_hats = Adversary(config.n_decorr_bins, n_outputs=1, scale=scale)(y_hat)
     adversary = Model(inputs=inputs,
                       outputs=[y_hat]+kin_hats)
-    adversary.compile(optimizer=Adam(lr=0.00025),
+    adversary.compile(optimizer=getattr(keras_objects, OPTIMIZER)(lr=0.0002),
                       loss=['categorical_crossentropy']+[emd for _ in kin_hats],
                       loss_weights=[w_clf]+[w_adv for _ in kin_hats])
 
@@ -130,11 +132,12 @@ def build_adversary(clf, loss, scale, w_clf, w_adv):
 
 
 # train any model
-def train(model, name, train_gen, validation_gen, save_clf=None):
-    if save_clf is not None:
-        callbacks = [PartialModelCheckpoint(save_clf,
-                                            '%s/%s/%s_clf_best.h5'%(MODELDIR,_APOSTLE,name), 
-                                            save_best_only=True, verbose=True)]
+def train(model, name, train_gen, validation_gen, save_clf_params=None):
+    if save_clf_params is not None:
+        callbacks = [PartialModelCheckpoint(filepath='%s/%s/%s_clf_best.h5'%(MODELDIR,_APOSTLE,name), 
+                                            save_best_only=True, verbose=True,
+                                            **save_clf_params)]
+        save_clf = save_clf_params['partial_model']
     else:
         save_clf = model
         callbacks = []
@@ -154,14 +157,13 @@ def train(model, name, train_gen, validation_gen, save_clf=None):
                         steps_per_epoch=3000, 
                         epochs=NEPOCH,
                         validation_data=validation_gen,
-                        validation_steps=100,
+                        validation_steps=2000,
                         callbacks = callbacks,
                        )
     save_classifier()
 
 
 def infer(modelh5, name):
-    print 'loading',modelh5
     model = load_model(modelh5,
                        custom_objects={'DenseBroadcast':DenseBroadcast})
     model.summary()
@@ -184,5 +186,6 @@ def infer(modelh5, name):
 
         return r_t 
 
+    print 'loaded from',modelh5,
     print 'saving to',name
     coll.infer(['singletons','particles'], f=predict_t, name=name, partition='test')

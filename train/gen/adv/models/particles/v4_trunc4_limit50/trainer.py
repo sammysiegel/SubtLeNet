@@ -2,7 +2,7 @@
 
 from argparse import ArgumentParser
 parser = ArgumentParser()
-parser.add_argument('--nepoch',type=int,default=50)
+parser.add_argument('--nepoch',type=int,default=20)
 parser.add_argument('--version',type=int,default=4)
 parser.add_argument('--trunc',type=int,default=4)
 parser.add_argument('--limit',type=int,default=50)
@@ -15,6 +15,7 @@ from os import path
 
 train.NEPOCH = args.nepoch
 train.VERSION = args.version
+#train.OPTIMIZER = 'RMSprop'
 data, dims = train.instantiate(args.trunc, args.limit)
 
 clf_gen = train.setup_data(data)
@@ -22,9 +23,9 @@ adv_gen = train.setup_adv_data(data)
 
 opts = {
         'loss' : args.adv,
-        'scale' : 0.5,
-        'w_clf' : 0.05,
-        'w_adv' : 100,
+        'scale' : 0.05,
+        'w_clf' : 0.005,
+        'w_adv' : 10,
         }
 
 if args.adv == 'emd':
@@ -45,4 +46,9 @@ if args.train_baseline or not(path.isfile(preload)):
     train.train(clf, 'baseline', clf_gen['train'], clf_gen['validation'])
 
 if args.adv:
-    train.train(adv, args.adv, adv_gen['train'], adv_gen['validation'], clf)
+    print 'Training the full adversarial stack:'
+    callback_params = {
+            'partial_model' : clf,
+            'monitor' : lambda x : opts['w_clf'] * x.get('val_y_hat_loss') - opts['w_adv'] * x.get('val_adv_loss'), # semi-arbitrary
+            }
+    train.train(adv, args.adv, adv_gen['train'], adv_gen['validation'], callback_params)

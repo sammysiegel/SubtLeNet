@@ -7,6 +7,7 @@ parser.add_argument('--h5',type=str)
 parser.add_argument('--name',type=str,default=None)
 args = parser.parse_args()
 
+import extra_vars
 from subtlenet.models import particles as train
 import imp
 

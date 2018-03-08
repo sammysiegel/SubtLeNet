@@ -55,7 +55,7 @@ class LazyData(object):
         targs = tuple(args)
         self.data[targs]
 
-class DataObject(object):
+class _DataObject(object):
     def __init__(self, fpaths):
         self.inputs = fpaths
         self.loaded = set([])
@@ -64,34 +64,27 @@ class DataObject(object):
         self.last_loaded = None 
 
     def load(self, idx=-1, memory=True, dry=False, lazy=False ):
-        if idx > 0:
+        fpath = None
+        if idx >= 0:
             fpath = self.inputs[idx]
-            if not dry:
-                self.data = LazyData(fpath=fpath, lazy=lazy)
-                if not lazy:
-                    self.n_available = self.data.data.shape[0]
-            else:
-                self.n_available = 0
-                self.data = None
-            if memory:
-                self.loaded.add(fpath)
-            self.last_loaded = fpath 
-            return 
         else:
-            for fpath in self.inputs:
-                if fpath not in self.loaded:
-                    if not dry:
-                        self.data = LazyData(fpath=fpath, lazy=lazy)
-                        if not lazy:
-                            self.n_available = self.data.data.shape[0]
-                    else:
-                        self.n_available = 0
-                        self.data = None
-                    if memory:
-                        self.loaded.add(fpath)
-                    self.last_loaded = fpath 
-                    return 
-        print 'DataObject.load did not load anything!'
+            for fpath_ in self.inputs:
+                if fpath_ not in self.loaded:
+                    fpath = fpath_
+                    break
+        if fpath is None:
+            print '_DataObject.load did not load anything!'
+            return
+        if not dry:
+            self.data = LazyData(fpath=fpath, lazy=lazy)
+            if not lazy:
+                self.n_available = self.data.data.shape[0]
+        else:
+            self.n_available = 0
+            self.data = None
+        if memory:
+            self.loaded.add(fpath)
+        self.last_loaded = fpath 
 
     def is_empty(self):
         return len(self.loaded) == len(self.inputs)
@@ -108,10 +101,14 @@ class DataObject(object):
 
 
 class _DataCollection(object):
-    def __init__(self):
+    def __init__(self, label=-1):
+        self.label = label
         self.objects = {part:{} for part in _partitions}
         self.weight = 'ptweight_scaled'
         self.fpath = None
+        self.order = None
+        self._counter = 0
+        self.n_available = None
 
     def add_categories(self, categories, fpath):
         '''load categories
@@ -145,32 +142,59 @@ class _DataCollection(object):
             if n_missing:
                 'partition %s had %i missing inputs'%(part, n_missing)
             for n,fs in to_add.iteritems():
-                self.objects[part][n] = DataObject(fs)
-
-    def load(self, partition, idx=-1, repartition=True, memory=True, components=None, lazy=False):
-        objs = self.objects[partition]
-        n_available = None 
-        for name,obj in objs.iteritems():
-            dry = (components and (name not in components))
-            if obj.is_empty():
-                if repartition:
-                    print '\n_DataCollection.load: repartitioning %s, %s!'%(
-                                 self.fpath.replace('PARTITION',partition),name
-                            )
-                    obj.refresh()
-                else:
-                    return False 
-            obj.load(idx=idx, memory=memory, dry=dry, lazy=lazy)
-            # assert that all the loaded data has the same size
-            assert(not(dry) or (n_available is None) or (obj.n_available==n_available))
-            n_available = obj.n_available
-        return True 
+                self.objects[part][n] = _DataObject(fs)
+        self.order = range(len(self.objects.values()[0].values()[0].inputs))
+        np.random.shuffle(self.order)
 
     def get(self, partition, indices=None):
         data = {}
         for k,v in self.objects[partition].iteritems():
             data[k] = v[indices]
         return data 
+
+    def refresh(self, partitions=None):
+        '''refresh
+        
+        reset the objects to the beginning of the data stream
+        
+        Keyword Arguments:
+            partitions {[type]} -- [description] (default: {None})
+        '''
+        partitions = _partitions if partitions is None else partitions
+        for p in partitions:
+            for o in self.objects[p].values():
+                o.refresh()
+
+        self._counter = 0
+        np.random.shuffle(self.order)
+
+    def repartition(self, partition):
+        # verbose refresh for a single partition
+        print ''
+        print '_DataCollection.load: repartitioning %s!'%(
+                     self.fpath.replace('PARTITION',partition)
+                )
+        self.refresh(partitions=[partition])
+
+    def load(self, partition, idx=-1, repartition=True, memory=True, components=None, lazy=False):
+        objs = self.objects[partition]
+        self.n_available = None 
+        if idx < 0:
+            if (self._counter == len(self.order)):
+                if repartition:
+                    self.repartition(partition)
+                else:
+                    return False
+            idx = self.order[self._counter]
+            if memory:
+                self._counter += 1 
+        for name,obj in objs.iteritems():
+            dry = (components and (name not in components))
+            obj.load(idx=idx, memory=memory, dry=dry, lazy=lazy)
+            # assert that all the loaded data has the same size
+            assert(not(dry) or (self.n_available is None) or (obj.n_available==self.n_available))
+            self.n_available = obj.n_available
+        return True 
 
     def draw(self, components, f_vars={}, f_mask=None, 
              weighted=True, partition='test', n_batches=None, f_vars2d={}):
@@ -283,19 +307,6 @@ class _DataCollection(object):
             pool = Pool(ncores)
             pool.map(_global_inference_target, l)
 
-    def refresh(self, partitions=None):
-        '''refresh
-        
-        reset the objects to the beginning of the data stream
-        
-        Keyword Arguments:
-            partitions {[type]} -- [description] (default: {None})
-        '''
-        partitions = _partitions if partitions is None else partitions
-        for p in partitions:
-            for o in self.objects[p].values():
-                o.refresh()
-
     def generator(self, components=None, partition='test', batch=10, repartition=False, normalize=False, lazy=False):
         # used as a generic generator for loading data
         while True:
@@ -350,8 +361,8 @@ class _DataCollection(object):
 # keep it in case we want to specialize further in the 
 # future.
 class GenCollection(_DataCollection):
-    def __init__(self):
-        super(GenCollection, self).__init__()
+    def __init__(self, label=-1):
+        super(GenCollection, self).__init__(label)
 
     def get(self, partition, indices=None):
         '''data access
@@ -364,12 +375,13 @@ class GenCollection(_DataCollection):
         '''
         data = super(GenCollection, self).get(partition,indices)
         data['weight'] = data[self.weight]
+        if self.n_available is not None:
+            data['label'] = LazyData(data = self.label * np.ones(data['weight'].data.shape))
         return data 
 
-
 class PFSVCollection(_DataCollection):
-    def __init__(self):
-        super(PFSVCollection, self).__init__()
+    def __init__(self, label=-1):
+        super(PFSVCollection, self).__init__(label)
 
     def get(self, partition, indices=None):
         '''data access
@@ -382,6 +394,8 @@ class PFSVCollection(_DataCollection):
         '''
         data = super(PFSVCollection, self).get(partition,indices)
         data['weight'] = data[self.weight]
+        if self.n_available is not None:
+            data['label'] = LazyData(data = self.label * np.ones(data['weight'].data.shape))
         return data 
 
 

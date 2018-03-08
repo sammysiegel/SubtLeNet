@@ -21,6 +21,9 @@ plt.rcParams['figure.figsize'] = fig_size
 
 ## plotting
 
+_epsilon = np.finfo(float).eps
+def _clip(x):
+    return np.sign(x + _epsilon) * np.clip(np.abs(x), _epsilon, np.inf)
 
 default_colors = np.concatenate([pl.cm.tab10(np.linspace(0,1,10)),
                                  pl.cm.Dark2(np.linspace(0,1,9))])
@@ -37,6 +40,9 @@ class NH1(object):
         self.bins = np.array(bins )
         self._content = np.array([0 for x in range(len(bins)+1)], dtype=np.float64)
         self._sumw2 = np.array([0 for x in range(len(bins)+1)], dtype=np.float64)
+    def iter(self):
+        for x in xrange(self.bins.shape[0]+1):
+            yield x
     def find_bin(self, x):
         for ix in xrange(len(self.bins)):
             if x < self.bins[ix]:
@@ -48,6 +54,8 @@ class NH1(object):
         return np.sqrt(self._sumw2[ix])
     def set_content(self, ix, val):
         self._content[ix] = val
+    def set_error(self, ix, val):
+        self._sumw2[ix] = val * val;
     def fill(self, x, y=1):
         ix = self.find_bin(x)
         self._content[ix] += y
@@ -85,6 +93,27 @@ class NH1(object):
             raise e
         add_content = load_arr[1].astype(np.float64)
         self._content += add_content
+    def clone(self):
+        new = NH1(self.bins)
+        new._content = np.array(self._content, copy=True)
+        new._sumw2 = np.array(self._sumw2, copy=True)
+        return new
+    def add(self, rhs, scale=1):
+        assert(self._content.shape == rhs._content.shape)
+        self._content += scale * rhs._content
+        self._sumw2 += scale * rhs._sumw2
+    def multiply(self, rhs):
+        assert(self._content.shape == rhs._content.shape)
+        self_rel = self._sumw2 / _clip(self._content)
+        rhs_rel = rhs._sumw2 / _clip(rhs._content)
+        self._content *= rhs._content 
+        self._sumw2 = (np.power(self_rel, 2) + np.power(rhs_rel, 2)) * self._content
+    def divide(self, den, clip=False):
+        inv = den.clone()
+        inv.invert()
+        self.multiply(inv)
+        if clip:
+            self._content[den._content <= _epsilon] = 1
     def integral(self, lo=None, hi=None):
         if lo is None:
             lo = 0
@@ -98,30 +127,28 @@ class NH1(object):
     def invert(self):
         for ix in range(self._content.shape[0]):
             val = self._content[ix]
-            if val:
+            if val != 0:
                 relerr = np.sqrt(self._sumw2[ix])/val 
-                self._content[ix] = 1000./val
+                self._content[ix] = 1./val
                 self._sumw2[ix] = relerr * self._content[ix]
+            else:
+                self._content[ix] = _epsilon
+                self._sumw2[ix] = 0
     def eval_array(self, arr):
         def f(x):
             return self.get_content(self.find_bin(x))
         f = np.vectorize(f)
         return f(arr)
     def plot(self, color, label, errors=False):
-        if errors: 
-            bin_centers = 0.5*(self.bins[1:] + self.bins[:-1])
-            errs = np.sqrt(self._sumw2)
-            plt.errorbar(bin_centers, 
-                         self._content[1:-1],
-                         yerr = errs[1:-1],
-                         marker = '.',
-                         drawstyle = 'steps-mid',
-                         color=color,
-                         label=label,
-                         linewidth=2)
+        bin_centers = 0.5*(self.bins[1:] + self.bins[:-1])
+        if errors and np.max(np.abs(self._sumw2)) > 0:
+            errs = np.sqrt(self._sumw2[1:-1])
         else:
-            plt.hist(self.bins[:-1], bins=self.bins, weights=self._content[1:-1],
-                     histtype='step',
+            errs = None
+        plt.errorbar(bin_centers, 
+                     self._content[1:-1],
+                     yerr = errs,
+                     drawstyle = 'steps-mid',
                      color=color,
                      label=label,
                      linewidth=2)
@@ -256,6 +283,7 @@ class Plotter(object):
         self.hists = []
         self.ymin = None
         self.ymax = None
+        self.auto_yrange = False
     def add_hist(self, hist, label, plotstyle):
         self.hists.append((hist, label, plotstyle))
     def clear(self):
@@ -276,12 +304,13 @@ class Plotter(object):
             plt.yscale('log', nonposy='clip')
         plt.legend(loc=0, fontsize=20)
         ax.tick_params(axis='both', which='major', labelsize=20)
-        if self.ymax is not None:
-            ax.set_ylim(top=self.ymax)
-        if self.ymin is not None:
-            ax.set_ylim(bottom=self.ymin)
-        elif not logy:
-            ax.set_ylim(bottom=0)
+        if not self.auto_yrange:
+            if self.ymax is not None:
+                ax.set_ylim(top=self.ymax)
+            if self.ymin is not None:
+                ax.set_ylim(bottom=self.ymin)
+            elif not logy:
+                ax.set_ylim(bottom=0)
         plt.draw()
         if 'output':
             print 'Creating',output

@@ -9,6 +9,7 @@ environ["CUDA_VISIBLE_DEVICES"] = ""
 
 import numpy as np
 
+import extra_vars
 from subtlenet import config, utils
 from subtlenet.backend import obj 
 from subtlenet.generators.gen import make_coll
@@ -26,18 +27,27 @@ system('mkdir -p %s'%OUTPUT)
 
 components = [
               'singletons',
-              'shallow_nopt', 
-#               'baseline_trunc4_limit50_best', 
-#               'decorrelated_trunc4_limit50_best', 
-#               'mse_decorrelated_trunc4_limit50_best', 
-#               'emd_decorrelated_trunc4_limit50_best', 
-              'baseline',
+              'shallow', 
+#               'baseline_trunc4_limit50_clf_best', 
+#               'decorrelated_trunc4_limit50_clf_best', 
+#               'mse_decorrelated_trunc4_limit50_clf_best', 
+#               'emd_decorrelated_trunc4_limit50_clf_best', 
+              'baseline_Adam_4_10',
+              'baseline_Adam_4_50',
+              'baseline_Adam_4_100',
+              'baseline_Adam_7_10',
+              'baseline_Adam_7_50',
+              'baseline_Adam_7_100',
+#              'baseline_Nadam',
+#              'baseline_RMSprop',
               'emd',
               'emd_clf_best',
               'mean_squared_error',
               'mean_squared_error_clf_best',
-              'categorical_cross_entropy',
-              'categorical_cross_entropy_clf_best',
+              'categorical_crossentropy',
+              'categorical_crossentropy_clf_best',
+#              'trunc4_limit50_clf_best',
+#              'trunc4_limit50',
               ]
 
 colls = {
@@ -63,10 +73,21 @@ f_vars = {
     'partonm' : (lambda x : access(x, 'partonm'), np.arange(0,400,5), 'Parton mass [GeV]'),
     'msd'     : (lambda x : access(x, 'msd'), np.arange(0.,400.,20.), r'$m_\mathrm{SD}$ [GeV]'),
     'pt'        : (lambda x : access(x, 'pt'), np.arange(250.,1000.,50.), r'$p_\mathrm{T}$ [GeV]'),
-    'shallow_nopt' : (lambda x : x['shallow_nopt'], np.arange(0,1.2,0.01), r'Shallow (no $p_{T}$) classifier'),
-    'shallow_nopt_roc' : (lambda x : x['shallow_nopt'], np.arange(0,1.2,0.0001), r'Shallow (no $p_{T}$) classifier'),
-    'baseline'  : (lambda x : x['baseline'], np.arange(0,1,0.01), 'Decorr (4,10)'),
-    'baseline_roc'  : (lambda x : x['baseline'], np.arange(0,1,0.0001), 'Decorr (4,10)'),
+    'shallow' : (lambda x : x['shallow'], np.arange(0,1.2,0.01), r'Shallow (no $p_{T}$) classifier'),
+    'shallow_roc' : (lambda x : x['shallow'], np.arange(0,1.2,0.0001), r'Shallow (no $p_{T}$) classifier'),
+    'baseline_Adam_4_10'  : (lambda x : x['baseline_Adam_4_10'], np.arange(0,1,0.01), '(4,10)'),
+    'baseline_Adam_4_10_roc'  : (lambda x : x['baseline_Adam_4_10'], np.arange(0,1,0.0001), '(4,10)'),
+    'baseline_Adam_4_50'  : (lambda x : x['baseline_Adam_4_50'], np.arange(0,1,0.01), '(4,50)'),
+    'baseline_Adam_4_50_roc'  : (lambda x : x['baseline_Adam_4_50'], np.arange(0,1,0.0001), '(4,50)'),
+    'baseline_Adam_4_100'  : (lambda x : x['baseline_Adam_4_100'], np.arange(0,1,0.01), '(4,100)'),
+    'baseline_Adam_4_100_roc'  : (lambda x : x['baseline_Adam_4_100'], np.arange(0,1,0.0001), '(4,100)'),
+    'baseline_Adam_7_10'  : (lambda x : x['baseline_Adam_7_10'], np.arange(0,1,0.01), '(7,10)'),
+    'baseline_Adam_7_10_roc'  : (lambda x : x['baseline_Adam_7_10'], np.arange(0,1,0.0001), '(7,10)'),
+    'baseline_Adam_7_50'  : (lambda x : x['baseline_Adam_7_50'], np.arange(0,1,0.01), '(7,50)'),
+    'baseline_Adam_7_50_roc'  : (lambda x : x['baseline_Adam_7_50'], np.arange(0,1,0.0001), '(7,50)'),
+    'baseline_Adam_7_100'  : (lambda x : x['baseline_Adam_7_100'], np.arange(0,1,0.01), '(7,100)'),
+    'baseline_Adam_7_100_roc'  : (lambda x : x['baseline_Adam_7_100'], np.arange(0,1,0.0001), '(7,100)'),
+#    'trunc4_limit50_roc'  : (lambda x : x['trunc4_limit50'], np.arange(0,1,0.0001), 'Decorr (4,10)'),
     'emd'  : (lambda x : x['emd'], np.arange(0,1,0.01), 'Decorr (4,10)'),
     'emd_clf_best'  : (lambda x : x['emd_clf_best'], np.arange(0,1,0.01), 'Decorr (4,10)'),
     'emd_roc'  : (lambda x : x['emd'], np.arange(0,1,0.0001), 'Decorr (4,10)'),
@@ -75,36 +96,54 @@ f_vars = {
     'mean_squared_error_clf_best'  : (lambda x : x['mean_squared_error_clf_best'], np.arange(0,1,0.01), 'Decorr (4,10)'),
     'mean_squared_error_roc'  : (lambda x : x['mean_squared_error'], np.arange(0,1,0.0001), 'Decorr (4,10)'),
     'mean_squared_error_clf_best_roc'  : (lambda x : x['mean_squared_error_clf_best'], np.arange(0,1,0.0001), 'Decorr (4,10)'),
-    'categorical_cross_entropy'  : (lambda x : x['categorical_cross_entropy'], np.arange(0,1,0.01), 'Decorr (4,10)'),
-    'categorical_cross_entropy_clf_best'  : (lambda x : x['categorical_cross_entropy_clf_best'], np.arange(0,1,0.01), 'Decorr (4,10)'),
-    'categorical_cross_entropy_roc'  : (lambda x : x['categorical_cross_entropy'], np.arange(0,1,0.0001), 'Decorr (4,10)'),
-    'categorical_cross_entropy_clf_best_roc'  : (lambda x : x['categorical_cross_entropy_clf_best'], np.arange(0,1,0.0001), 'Decorr (4,10)'),
+    'categorical_crossentropy'  : (lambda x : x['categorical_crossentropy'], np.arange(0,1,0.01), 'Decorr (4,10)'),
+    'categorical_crossentropy_clf_best'  : (lambda x : x['categorical_crossentropy_clf_best'], np.arange(0,1,0.01), 'Decorr (4,10)'),
+    'categorical_crossentropy_roc'  : (lambda x : x['categorical_crossentropy'], np.arange(0,1,0.0001), 'Decorr (4,10)'),
+    'categorical_crossentropy_clf_best_roc'  : (lambda x : x['categorical_crossentropy_clf_best'], np.arange(0,1,0.0001), 'Decorr (4,10)'),
 }
 
 roc_vars = {
             'tau32':(r'$\tau_{32}$',0,':'),
             'tau32sd':(r'$\tau_{32}^\mathrm{SD}$',2,':'),
-            'shallow_nopt_roc':('Shallow',3,':'),
-            'baseline_roc':('Baseline',4),
+            'shallow_roc':('Shallow',3,':'),
+            'baseline_Nadam_roc':('Baseline Nadam',12),
+            'baseline_RMSprop_roc':('Baseline RMSprop',11),
+            'trunc4_limit50_clf_best_roc':('Baseline 2',4,'--'),
+            'trunc4_limit50_roc':('Baseline 3',4,':'),
             'emd_roc':('EMD',7),
             'emd_clf_best_roc':('EMD best',7,'--'),
             'mean_squared_error_roc':('MSE',6),
             'mean_squared_error_clf_best_roc':('MSE best',6,'--'),
-            'categorical_cross_entropy_roc':('CCE',5),
-            'categorical_cross_entropy_clf_best_roc':('CCE best',5,'--'),
+            'categorical_crossentropy_roc':('CCE',5),
+            'categorical_crossentropy_clf_best_roc':('CCE best',5,'--'),
+            'baseline_Adam_4_10_roc':('C-LSTM (4,10)',9),
+            'baseline_Adam_4_50_roc':('C-LSTM (4,50)',10),
+            'baseline_Adam_4_100_roc':('C-LSTM (4,100)',11),
+            'baseline_Adam_7_10_roc':('C-LSTM (7,10)',12),
+            'baseline_Adam_7_50_roc':('C-LSTM (7,50)',13),
+            'baseline_Adam_7_100_roc':('C-LSTM (7,100)',14),
             }
 
 order = [
         'tau32',
         'tau32sd',
-        'shallow_nopt_roc',
-        'baseline_roc',
+        'shallow_roc',
+        'baseline_RMSprop_roc',
+        'baseline_Nadam_roc',
+        'trunc4_limit50_clf_best_roc',
+        'trunc4_limit50_roc',
         'emd_roc',
         'emd_clf_best_roc',
         'mean_squared_error_roc',
         'mean_squared_error_clf_best_roc',
-        'categorical_cross_entropy_roc',
-        'categorical_cross_entropy_clf_best_roc',
+        'categorical_crossentropy_roc',
+        'categorical_crossentropy_clf_best_roc',
+        'baseline_Adam_4_10_roc',
+        'baseline_Adam_4_50_roc',
+        'baseline_Adam_4_100_roc',
+        'baseline_Adam_7_10_roc',
+        'baseline_Adam_7_50_roc',
+        'baseline_Adam_7_100_roc',
         ]
 
 # unmasked first
@@ -228,9 +267,9 @@ sculpting('emd', f_pred = f_vars['emd'][0])
 sculpting('emd_clf_best', f_pred = f_vars['emd_clf_best'][0])
 sculpting('mean_squared_error', f_pred = f_vars['mean_squared_error'][0])
 sculpting('mean_squared_error_clf_best', f_pred = f_vars['mean_squared_error_clf_best'][0])
-sculpting('categorical_cross_entropy', f_pred = f_vars['categorical_cross_entropy'][0])
-sculpting('categorical_cross_entropy_clf_best', f_pred = f_vars['categorical_cross_entropy_clf_best'][0])
+sculpting('categorical_crossentropy', f_pred = f_vars['categorical_crossentropy'][0])
+sculpting('categorical_crossentropy_clf_best', f_pred = f_vars['categorical_crossentropy_clf_best'][0])
 sculpting('tau32sd', f_pred = f_vars['tau32sd'][0]) 
-sculpting('baseline', f_pred = f_vars['baseline'][0])
-sculpting('shallow_nopt', f_pred = f_vars['shallow_nopt'][0])
-
+sculpting('baseline_Adam_7_100', f_pred = f_vars['baseline_Adam_7_100'][0])
+sculpting('shallow', f_pred = f_vars['shallow'][0])
+#

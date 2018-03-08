@@ -86,7 +86,7 @@ for i in xrange(1,5):
 y_hat = Dense(config.n_truth, activation='softmax')(h)
 
 classifier = Model(inputs=inputs, outputs=[y_hat])
-classifier.compile(optimizer=Adam(lr=0.0005),
+classifier.compile(optimizer=Adam(lr=0.0003, amsgrad=True),
                    loss='categorical_crossentropy',
                    metrics=['accuracy'])
 
@@ -109,7 +109,7 @@ classifier.fit_generator(classifier_train_gen,
                          steps_per_epoch=3000, 
                          epochs=NEPOCH,
                          validation_data=classifier_validation_gen,
-                         validation_steps=1000,
+                         validation_steps=2000,
                          callbacks = [ModelCheckpoint('particle_models/%s_%s_best.h5'%('classifier',APOSTLE), save_best_only=True, verbose=True)],
                         )
 save_classifier()

@@ -3,8 +3,7 @@
 import readline
 import code
 import numpy as np
-from sys import argv, exit
-from PandaCore.Tools.Misc import PInfo, PError
+from sys import argv, exit, stdout, stderr
 from argparse import ArgumentParser 
 
 parser = ArgumentParser(description='numpy load')
@@ -17,7 +16,7 @@ data = {}
 for fpath in args.files:
     data[fpath] = np.load(fpath)
     if args.verbose:
-        PInfo('npy', fpath)
+        stdout.write('npy - loading '+fpath+'\n')
 
 if len(data) == 1:
     d = data.values()[0]
@@ -34,5 +33,5 @@ else:
         from IPython import embed
         embed()
     except ImportError as e:
-        PError('npy', 'IPython not found, try passing --python for bare python shell')
+        stderr.write('npy - IPython not found, try passing --python for base python shell\n')
         exit(1)

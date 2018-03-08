@@ -13,8 +13,6 @@ train.NEPOCH = args.nepoch
 train.VERSION = args.version
 data, dims = train.instantiate()
 
-#clf_gen = train.setup_data(data)
-
-#clf = train.build_classifier(dims)
-
-#train.train(clf, 'classifier', clf_gen['train'], clf_gen['validation'])
+clf_gen = train.setup_data(data)
+clf = train.build_classifier(dims)
+train.train(clf, 'classifier', clf_gen['train'], clf_gen['validation'])
