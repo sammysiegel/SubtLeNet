@@ -24,7 +24,7 @@ def instantiate(default_variables=config.gen_default_variables,
                 default_mus=config.gen_default_mus,
                 default_sigmas=config.gen_default_sigmas):
     global _APOSTLE
-    _APOSTLE = 'v%i'%(VERSION)
+    _APOSTLE = 'v%s'%(str(VERSION))
     system('mkdir -p %s/%s/'%(MODELDIR,_APOSTLE))
     system('cp -v %s %s/%s/trainer.py'%(sys.argv[0], MODELDIR, _APOSTLE))
     system('cp -v %s %s/%s/lib.py'%(__file__.replace('.pyc','.py'), MODELDIR, _APOSTLE))
@@ -53,7 +53,7 @@ config.gen_default_sigmas = %s
 
     data = [top, qcd]
 
-    if BASEDIR_VAR is not None:
+    if BASEDIR_VAR:
         counter = 1
         for v in VARIATIONS:
             suffixes = [''] if v == 'Nominal' else ['Up', 'Down']
@@ -125,7 +125,26 @@ def build_kl_classifier(clf, n_class, loss='kl'):
     kl = Model(inputs=inputs, outputs=outputs)
     kl.compile(optimizer=Adam(lr=0.0001),
                loss=['categorical_crossentropy', lossfn],
-               loss_weights=[0.001,1])
+               loss_weights=[1,100])
+
+    print '########### KL-MODIFIED ############'
+    kl.summary()
+    print '###################################'
+
+    return kl
+
+def build_kl_mass(clf):
+    kl_input = Input(shape=(config.n_decorr_bins + 1,), name='kl_input')
+    y_hat = clf.outputs[0]
+    tag = Lambda(lambda x : x[:,-1:], output_shape=(1,))(y_hat)
+    kl_output = concatenate([kl_input, tag], axis=-1, name='kl')
+    inputs = clf.inputs + [kl_input]
+    outputs = clf.outputs + [kl_output]
+
+    kl = Model(inputs=inputs, outputs=outputs)
+    kl.compile(optimizer=Adam(lr=0.0001),
+               loss=['categorical_crossentropy', sculpting_kl_penalty],
+               loss_weights=[0.01,200])
 
     print '########### KL-MODIFIED ############'
     kl.summary()

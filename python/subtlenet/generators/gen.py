@@ -26,6 +26,7 @@ def generate(collections, partition='train', batch=32,
              decorr_mass=False, decorr_pt=False,
              learn_mass=False, learn_pt=False,
              normalize=False,
+             window=False,
              smear_params=None):
     small_batch = max(1, int(batch / len(collections)))
     generators = {c:c.generator(components=['singletons', 'particles', c.weight,'truth'],
@@ -94,16 +95,19 @@ def generate(collections, partition='train', batch=32,
                 )
             o = [nprongs]
             w = [data[c.weight]]
+            if window:
+                msd = data['singletons'][:,msd_index]
+                w[0] = data[c.weight] * np.logical_and(msd > 150, msd < 200).astype(int)
 
             if decorr_mass:
                 mass = xform_mass(data['singletons'][:,msd_index])
                 o.append(mass)
-                w.append(w[0] * nprongs[:,config.adversary_mask])
+                w.append(data[c.weight] * nprongs[:,config.adversary_mask])
 
             if decorr_pt:
                 pt = xform_pt(data['singletons'][:,pt_index])
                 o.append(pt)
-                w.append(w[0] * nprongs[:,config.adversary_mask])
+                w.append(data[c.weight] * nprongs[:,config.adversary_mask])
 
             outputs.append(o)
             weights.append(w)

@@ -498,7 +498,7 @@ class Adversary(object):
         self._dense = []
 
     def __call__(self, inputs):
-        self._reverse = GradReverseLayer(self.scale)(inputs)
+        self._reverse = GradReverseLayer(self.scale, name='u_grl')(inputs)
 
         n_outputs = self.n_outputs
         self._dense.append( [Dense(5, activation='tanh')(self._reverse) for _ in xrange(n_outputs)] )
