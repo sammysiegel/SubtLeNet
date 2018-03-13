@@ -26,6 +26,8 @@ built in memory when the dataset is accessed (only once).
 Author: S. Narayanan 
 '''
 
+
+
 def _global_inference_target(args):
     counter = args[0]
     ldata = args[1]
@@ -38,6 +40,8 @@ def _global_inference_target(args):
     out_name = ldata['singletons'].fpath.replace('singletons', name)
     np.save(out_name, inference)
 
+
+
 class LazyData(object):
     __slots__ = ['fpath','data','loaded']
     def __init__(self, fpath=None, data=None, lazy=False):
@@ -46,15 +50,21 @@ class LazyData(object):
         self.loaded = not(data is None)
         if not lazy and data is None:
             self.__call__()  
+
+
     def __call__(self):
         if config.DEBUG: 
             stderr.write('Loading %s\n'%self.fpath)
             stderr.flush()
         self.data = np.nan_to_num(np.load(self.fpath))
         self.loaded = True 
+
+
     def __getitem__(self, *args):
         targs = tuple(args)
         self.data[targs]
+
+
 
 class _DataObject(object):
     def __init__(self, fpaths):
@@ -63,6 +73,7 @@ class _DataObject(object):
         self.n_available = 0 
         self.data = None 
         self.last_loaded = None 
+
 
     def load(self, idx=-1, memory=True, dry=False, lazy=False ):
         fpath = None
@@ -87,11 +98,14 @@ class _DataObject(object):
             self.loaded.add(fpath)
         self.last_loaded = fpath 
 
+
     def is_empty(self):
         return len(self.loaded) == len(self.inputs)
 
+
     def refresh(self):
         self.loaded = set([])
+
 
     def __getitem__(self, indices=None):
         if indices and self.data.loaded:
@@ -99,6 +113,7 @@ class _DataObject(object):
             return LazyData(fpath=fpath, data=_data, lazy=True)
         else:
             return self.data 
+
 
 
 class _DataCollection(object):
@@ -110,6 +125,7 @@ class _DataCollection(object):
         self.order = None
         self._counter = 0
         self.n_available = None
+
 
     def add_categories(self, categories, fpath):
         '''load categories
@@ -148,11 +164,13 @@ class _DataCollection(object):
         if _RANDOMIZE:
             np.random.shuffle(self.order)
 
+
     def get(self, partition, indices=None):
         data = {}
         for k,v in self.objects[partition].iteritems():
             data[k] = v[indices]
         return data 
+
 
     def refresh(self, partitions=None):
         '''refresh
@@ -171,6 +189,7 @@ class _DataCollection(object):
         if _RANDOMIZE:
             np.random.shuffle(self.order)
 
+
     def repartition(self, partition):
         # verbose refresh for a single partition
         print ''
@@ -178,6 +197,7 @@ class _DataCollection(object):
                      self.fpath.replace('PARTITION',partition)
                 )
         self.refresh(partitions=[partition])
+
 
     def load(self, partition, idx=-1, repartition=True, memory=True, components=None, lazy=False):
         objs = self.objects[partition]
@@ -198,6 +218,55 @@ class _DataCollection(object):
             assert(not(dry) or (self.n_available is None) or (obj.n_available==self.n_available))
             self.n_available = obj.n_available
         return True 
+
+
+    def generator(self, components=None, partition='test', batch=10, repartition=False, normalize=False, lazy=False):
+        # used as a generic generator for loading data
+        while True:
+            if not self.load(components=components, partition=partition, repartition=repartition, lazy=lazy):
+                return 
+            ldata = self.get(partition)
+            if ldata.values()[0].loaded:
+                sane = True 
+                for _,v in ldata.iteritems():
+                    if np.isnan(np.sum(v.data)): # seems to be the fastest way
+                        sane = False
+                if not sane:
+                    print 'ERROR - last loaded data was not sane!'
+                    continue
+                N = ldata[components[0]].data.shape[0]
+                if normalize and self.weight in components and batch:
+                    ldata[self.weight].data /= ldata[self.weight].data.shape[0] 
+                    ldata[self.weight].data *= 100
+                        # normalize the weight to the size of batches
+                else:
+                    ldata[self.weight].data /= 100 
+                if batch:
+                    n_batches = max(1,int(floor(N * 1. / batch + 0.5)))
+                    for ib in xrange(n_batches):
+                        lo = ib * batch 
+                        hi = min(N, (ib + 1) * batch)
+                        to_yield = {k:LazyData(data=v.data[lo:hi], lazy=True) for k,v in ldata.iteritems()}
+
+                        sanity_check = {k:v.data.shape[0] for k,v in to_yield.iteritems()
+                                                          if type(v.data) == np.ndarray}
+                        scv = sanity_check.values()
+                        if any([x != scv[0] for x in scv]):
+                            print 'Found an inconsistency in %s'%( 
+                                        self.obje.cts[partition]['singletons'].last_loaded
+                                    )
+                            print 'partition = ',partition
+                            print 'We are in batch %i out of %i'%(ib, n_batches)
+                            print 'lo=%i, hi=%i, N=%i'%(lo, hi, N)
+                            for k,v in sanity_check.iteritems():
+                                print '%s : %i / %i'%(k, v, ldata[k].data.shape[0])
+                            raise ValueError
+                        yield to_yield 
+                else:
+                    yield ldata 
+            else:
+                yield ldata 
+
 
     def draw(self, components, f_vars={}, f_mask=None, 
              weighted=True, partition='test', n_batches=None, f_vars2d={}):
@@ -288,6 +357,7 @@ class _DataCollection(object):
         else:
             return hists
 
+
     def infer(self, components, f, name, partition='test', ncores=1):
         gen = self.generator(components+[self.weight, 'truth'], partition, batch=None, lazy=(ncores>1))
         starttime = time()
@@ -310,52 +380,6 @@ class _DataCollection(object):
             pool = Pool(ncores)
             pool.map(_global_inference_target, l)
 
-    def generator(self, components=None, partition='test', batch=10, repartition=False, normalize=False, lazy=False):
-        # used as a generic generator for loading data
-        while True:
-            if not self.load(components=components, partition=partition, repartition=repartition, lazy=lazy):
-                return 
-            ldata = self.get(partition)
-            if ldata.values()[0].loaded:
-                sane = True 
-                for _,v in ldata.iteritems():
-                    if np.isnan(np.sum(v.data)): # seems to be the fastest way
-                        sane = False
-                if not sane:
-                    print 'ERROR - last loaded data was not sane!'
-                    continue
-                N = ldata[components[0]].data.shape[0]
-                if normalize and self.weight in components and batch:
-                    ldata[self.weight].data /= ldata[self.weight].data.shape[0] 
-                    ldata[self.weight].data *= 100
-                        # normalize the weight to the size of batches
-                else:
-                    ldata[self.weight].data /= 100 
-                if batch:
-                    n_batches = max(1,int(floor(N * 1. / batch + 0.5)))
-                    for ib in xrange(n_batches):
-                        lo = ib * batch 
-                        hi = min(N, (ib + 1) * batch)
-                        to_yield = {k:LazyData(data=v.data[lo:hi], lazy=True) for k,v in ldata.iteritems()}
-
-                        sanity_check = {k:v.data.shape[0] for k,v in to_yield.iteritems()
-                                                          if type(v.data) == np.ndarray}
-                        scv = sanity_check.values()
-                        if any([x != scv[0] for x in scv]):
-                            print 'Found an inconsistency in %s'%( 
-                                        self.obje.cts[partition]['singletons'].last_loaded
-                                    )
-                            print 'partition = ',partition
-                            print 'We are in batch %i out of %i'%(ib, n_batches)
-                            print 'lo=%i, hi=%i, N=%i'%(lo, hi, N)
-                            for k,v in sanity_check.iteritems():
-                                print '%s : %i / %i'%(k, v, ldata[k].data.shape[0])
-                            raise ValueError
-                        yield to_yield 
-                else:
-                    yield ldata 
-            else:
-                yield ldata 
 
 
 # specialized classes for different types of data.
@@ -365,6 +389,7 @@ class _DataCollection(object):
 class GenCollection(_DataCollection):
     def __init__(self, label=-1):
         super(GenCollection, self).__init__(label)
+
 
     def get(self, partition, indices=None):
         '''data access
@@ -384,6 +409,7 @@ class GenCollection(_DataCollection):
 class PFSVCollection(_DataCollection):
     def __init__(self, label=-1):
         super(PFSVCollection, self).__init__(label)
+
 
     def get(self, partition, indices=None):
         '''data access

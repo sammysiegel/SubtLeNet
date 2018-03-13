@@ -66,13 +66,28 @@ class _Generator(object):
                          ).astype(np.int)
                 onehot = np_utils.to_categorical(binned, config.n_decorr_bins)
                 return onehot
+            def xform_mass_pt(m, p):
+                binned_pt = (np.minimum(x-config.min_pt, config.max_pt-config.min_pt) 
+                             * self.pt_norm_factor 
+                             * (config.n_decorr_bins - 1)
+                            ).astype(np.int)
+                binned_msd = (np.minimum(m, config.max_mass) 
+                              * self.msd_norm_factor 
+                              * (config.n_decorr_bins - 1)
+                             ).astype(np.int)
+                binned = config.n_decorr_bins * binned_pt + binned_msd
+                onehot = np_utils.to_categorical(binned, config.n_decorr_bins ** 2)
+                return onehot
         else:
             def xform_mass(x):
                 return np.minimum(x, config.max_mass) * self.msd_norm_factor         
             def xform_pt(x):
                 return (np.minimum(x-config.min_pt, config.max_pt-config.min_pt) * self.pt_norm_factor)
+            def xform_mass_pt(m, p):
+                return np.concatenate([xform_mass(m), xform_pt(p)], axis=0)
         self.xform_mass = xform_mass
         self.xform_pt = xform_pt
+        self.xform_mass_pt = xform_mass_pt
     def _set_smearer(self, smear_params):
         if smear_params is not None:
             if len(smear_params) == 2:

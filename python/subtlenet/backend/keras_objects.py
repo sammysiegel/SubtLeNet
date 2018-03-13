@@ -4,5 +4,7 @@ from keras.layers import Input, Dense, Dropout, concatenate, LSTM, \
 
 from keras.optimizers import Adam, RMSprop, Adadelta, Adagrad, Nadam
 
+from keras.regularizers import L1L2
+
 def AMSgrad(*args, **kwargs):
     return Adam(*args, amsgrad=True, **kwargs)

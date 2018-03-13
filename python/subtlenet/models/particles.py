@@ -3,6 +3,7 @@
 from _common import *
 from ..generators.gen_new import make_coll, Generator, get_dims
 from ..generators import gen_new as generator
+from copy import copy, deepcopy
 
 ''' 
 some global definitions
@@ -17,6 +18,16 @@ _APOSTLE = None
 train_opts = {
         'learn_mass' : True,
         'learn_pt' : True,
+        }
+
+
+_conv_args = { 
+    'activation' : 'relu',
+    'padding' : 'same',
+    'kernel_initializer' : 'lecun_uniform' 
+    }
+_dense_args = {
+        'kernel_initializer' : 'lecun_uniform'
         }
 
 # must be called!
@@ -60,30 +71,6 @@ def setup_data(data, **kwargs):
     if 'smear_params' not in kwargs:
         kwargs['smear_params'] = config.smear_params
     gen = {
-        'train' : Generator(data, partition='train', batch=500, **kwargs)(),
-        'validation' : Generator(data, partition='validate', batch=2000, **kwargs)(),
-        'test' : Generator(data, partition='test', batch=10, **kwargs)(),
-        }
-    return gen
-
-def setup_adv_data(data, **kwargs):
-    kwargs.update( {'decorr_mass':True} )
-    kwargs.update(train_opts)
-    if 'smear_params' not in kwargs:
-        kwargs['smear_params'] = config.smear_params
-    gen = {
-        'train' : Generator(data, partition='train', batch=1000, **kwargs)(),
-        'validation' : Generator(data, partition='validate', batch=2000, **kwargs)(),
-        'test' : Generator(data, partition='test', batch=10, **kwargs)(),
-        }
-    return gen
-
-def setup_kl_data(data, **kwargs):
-    kwargs.update( {'kl_decorr_mass':True} )
-    kwargs.update(train_opts)
-    if 'smear_params' not in kwargs:
-        kwargs['smear_params'] = config.smear_params
-    gen = {
         'train' : Generator(data, partition='train', batch=1000, **kwargs)(),
         'validation' : Generator(data, partition='validate', batch=2000, **kwargs)(),
         'test' : Generator(data, partition='test', batch=10, **kwargs)(),
@@ -109,31 +96,53 @@ def compilation_args(name, **kwargs):
         }
 
 # this is purely a discriminatory classifier
-def build_classifier(dims):
+def build_classifier(dims, last_size=10, l2_penalty=0, l1_penalty=0):
+    if l2_penalty + l1_penalty > 0:
+        reg = lambda : L1L2(l1_penalty, l2_penalty)
+    else:
+        reg = lambda : None
+    reg_opts = lambda : {'bias_regularization' : reg(), 'kernel_regularization' : reg()}
+
+    LSTMImplementation = CuDNNLSTM if (utils.get_processor() == 'gpu') else LSTM
+
+    def conv_args():
+        a = copy(_conv_args)
+        a.update(reg_opts())
+        return a
+
+    def lstm_args():
+        a = {'recurrent_regularizer' : reg()}
+        a.update(reg_opts())
+        return a
+
+    def dense_args(act='relu'):
+        a = copy(_dense_args)
+        a['activation'] = act
+        a.update(reg_opts())
+        return a
+
     input_particles  = Input(shape=(dims[1], dims[2]), name='input_particles')
     input_mass = Input(shape=(1,), name='input_mass')
     input_pt = Input(shape=(1,), name='input_pt')
     inputs = [input_particles, input_mass, input_pt]
 
-    LSTMImplementation = CuDNNLSTM if (utils.get_processor() == 'gpu') else LSTM
-
     # now build the particle network
     h = BatchNormalization(momentum=0.6, name='f_bn0')(input_particles)
-    h = Conv1D(32, 2, activation='relu', kernel_initializer='lecun_uniform', 
-               padding='same', name='f_c0')(h)
+    h = Conv1D(32, 2, name='f_c0', **conv_args())(h)
     h = BatchNormalization(momentum=0.6, name='f_bn1')(h)
-    h = Conv1D(16, 4, activation='relu', kernel_initializer='lecun_uniform', 
-               padding='same', name='f_c1')(h)
+    h = Conv1D(16, 4, name='f_c1', **conv_args())(h)
     h = BatchNormalization(momentum=0.6, name='f_bn2')(h)
-    h = LSTMImplementation(100, name='f_lstm')(h)
+
+    h = LSTMImplementation(100, name='f_lstm', **lstm_args())(h)
+
     h = BatchNormalization(momentum=0.6, name='f_bn3')(h)
-    h = Dense(100, activation='relu', kernel_initializer='lecun_uniform', name='f_d0')(h)
+    h = Dense(100, name='f_d0', **dense_args())(h)
     h = BatchNormalization(momentum=0.6, name='f_bn4')(h)
-    h = Dense(50, activation='relu', kernel_initializer='lecun_uniform', name='f_d1')(h)
+    h = Dense(50, name='f_d1', **dense_args())(h)
     h = BatchNormalization(momentum=0.6, name='f_bn5')(h)
-    h = Dense(50, activation='relu', kernel_initializer='lecun_uniform', name='f_d2')(h)
+    h = Dense(50, name='f_d2', **dense_args())(h)
     h = BatchNormalization(momentum=0.6, name='f_bn6')(h)
-    h = Dense(10, activation='relu', kernel_initializer='lecun_uniform', name='f_d3')(h)
+    h = Dense(last_size, name='f_d3', **dense_args())(h)
     h = BatchNormalization(momentum=0.6, name='f_bn7')(h)
     particles_final = h 
 
@@ -142,11 +151,11 @@ def build_classifier(dims):
     h = concatenate(to_merge, name='f_cc0')
 
     for i in xrange(2):
-        h = Dense(50, activation='tanh', name='u_xd%i'%i)(h)
+        h = Dense(50, name='u_xd%i'%i, **dense_args('tanh'))(h)
         h = BatchNormalization(momentum=0.6, name='u_xbn%i'%i)(h)
 
 
-    y_hat = Dense(config.n_truth, activation='softmax', name='y_hat')(h)
+    y_hat = Dense(config.n_truth, name='y_hat', **dense_args('softmax'))(h)
 
     classifier = Model(inputs=inputs, outputs=[y_hat])
     for l in classifier.layers:
@@ -160,6 +169,7 @@ def build_classifier(dims):
 
     return classifier
 
+### TODO Finish implementing regularization for what is below
 
 def build_kl_mass(clf, w_clf=0.0001, w_kl=1, w_adv=None, loss=sculpting_kl_penalty):
     if w_adv is not None:
