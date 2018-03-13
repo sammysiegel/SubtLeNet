@@ -9,9 +9,10 @@ from time import time
 from multiprocessing import Process, Pool
 
 from ..  import config
-from ..utils import NH1,NH2
+from ..utils import NH1, NH2
 
 _partitions = ['train', 'test', 'validate']
+_RANDOMIZE = True
 
 
 '''data format for training
@@ -123,7 +124,7 @@ class _DataCollection(object):
         names = categories + [self.weight, 'truth']
         self.fpath = fpath 
         for part in _partitions:
-            basefiles = glob(fpath.replace('CATEGORY',names[0]).replace('PARTITION',part))
+            basefiles = sorted(glob(fpath.replace('CATEGORY',names[0]).replace('PARTITION',part)))
             n_missing = 0
             to_add = {n:[] for n in names}
             for f in basefiles:
@@ -144,7 +145,8 @@ class _DataCollection(object):
             for n,fs in to_add.iteritems():
                 self.objects[part][n] = _DataObject(fs)
         self.order = range(len(self.objects.values()[0].values()[0].inputs))
-        np.random.shuffle(self.order)
+        if _RANDOMIZE:
+            np.random.shuffle(self.order)
 
     def get(self, partition, indices=None):
         data = {}
@@ -166,7 +168,8 @@ class _DataCollection(object):
                 o.refresh()
 
         self._counter = 0
-        np.random.shuffle(self.order)
+        if _RANDOMIZE:
+            np.random.shuffle(self.order)
 
     def repartition(self, partition):
         # verbose refresh for a single partition
@@ -311,7 +314,7 @@ class _DataCollection(object):
         # used as a generic generator for loading data
         while True:
             if not self.load(components=components, partition=partition, repartition=repartition, lazy=lazy):
-                raise StopIteration
+                return 
             ldata = self.get(partition)
             if ldata.values()[0].loaded:
                 sane = True 
@@ -329,7 +332,7 @@ class _DataCollection(object):
                 else:
                     ldata[self.weight].data /= 100 
                 if batch:
-                    n_batches = int(floor(N * 1. / batch + 0.5))
+                    n_batches = max(1,int(floor(N * 1. / batch + 0.5)))
                     for ib in xrange(n_batches):
                         lo = ib * batch 
                         hi = min(N, (ib + 1) * batch)
@@ -348,7 +351,6 @@ class _DataCollection(object):
                             for k,v in sanity_check.iteritems():
                                 print '%s : %i / %i'%(k, v, ldata[k].data.shape[0])
                             raise ValueError
-
                         yield to_yield 
                 else:
                     yield ldata 

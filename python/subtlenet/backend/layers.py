@@ -506,8 +506,15 @@ class Adversary(object):
         self._dense.append( [Dense(10, activation='tanh')(d) for d in self._dense[-1]] )
         self._dense.append( [Dense(10, activation='tanh')(d) for d in self._dense[-1]] )
         if self.n_output_bins > 1:
-            self._outputs = [Dense(self.n_output_bins, activation='softmax', name='adv')(d) 
-                             for d in self._dense[-1]]
+            if n_outputs == 1:
+                self._outputs = [Dense(self.n_output_bins, activation='softmax', name='adv')(d) 
+                                 for d in self._dense[-1]]
+            else:
+                self._outputs = [Dense(self.n_output_bins, activation='softmax', name='adv%i'%i)(d) 
+                                 for i,d in enumerate(self._dense[-1])]
         else:
-            self._outputs = [Dense(1, activation='linear', name='adv')(d) for d in self._dense[-1]]
+            if n_outputs == 1:
+                self._outputs = [Dense(1, activation='linear', name='adv')(d) for d in self._dense[-1]]
+            else:
+                self._outputs = [Dense(1, activation='linear', name='adv%i'%i)(d) for i,d in enumerate(self._dense[-1])]
         return self._outputs 

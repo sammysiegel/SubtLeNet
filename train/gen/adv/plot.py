@@ -40,12 +40,12 @@ components = [
               'baseline_Adam_7_100',
 #              'baseline_Nadam',
 #              'baseline_RMSprop',
-              'emd',
-              'emd_clf_best',
-              'mean_squared_error',
-              'mean_squared_error_clf_best',
-              'categorical_crossentropy',
-              'categorical_crossentropy_clf_best',
+#              'emd',
+#              'emd_clf_best',
+#              'mean_squared_error',
+#              'mean_squared_error_clf_best',
+#              'categorical_crossentropy',
+#              'categorical_crossentropy_clf_best',
 #              'trunc4_limit50_clf_best',
 #              'trunc4_limit50',
               ]
@@ -66,40 +66,43 @@ def access(data, v):
 def div(data, num, den):
     return access(data, num) / np.clip(access(data, den), 0.0001, 999)
 
+def makebins(lo, hi, w):
+    return np.linspace(lo, hi, int((hi-lo)/w))
+
 f_vars = {
-    'nprongs' : (lambda x : access(x, 'nprongs'), np.arange(0,10,0.1), r'$N_\mathrm{prongs}$'),
-    'tau32' : (lambda x : div(x, 'tau3', 'tau2'), np.arange(0,1.2,0.01), r'$\tau_{32}$'),
-    'tau32sd' : (lambda x : div(x, 'tau3sd', 'tau2sd'), np.arange(0,1.2,0.01), r'$\tau_{32}^\mathrm{sd}$'),
-    'partonm' : (lambda x : access(x, 'partonm'), np.arange(0,400,5), 'Parton mass [GeV]'),
-    'msd'     : (lambda x : access(x, 'msd'), np.arange(0.,400.,20.), r'$m_\mathrm{SD}$ [GeV]'),
-    'pt'        : (lambda x : access(x, 'pt'), np.arange(250.,1000.,50.), r'$p_\mathrm{T}$ [GeV]'),
-    'shallow' : (lambda x : x['shallow'], np.arange(0,1.2,0.01), r'Shallow (no $p_{T}$) classifier'),
-    'shallow_roc' : (lambda x : x['shallow'], np.arange(0,1.2,0.0001), r'Shallow (no $p_{T}$) classifier'),
-    'baseline_Adam_4_10'  : (lambda x : x['baseline_Adam_4_10'], np.arange(0,1,0.01), '(4,10)'),
-    'baseline_Adam_4_10_roc'  : (lambda x : x['baseline_Adam_4_10'], np.arange(0,1,0.0001), '(4,10)'),
-    'baseline_Adam_4_50'  : (lambda x : x['baseline_Adam_4_50'], np.arange(0,1,0.01), '(4,50)'),
-    'baseline_Adam_4_50_roc'  : (lambda x : x['baseline_Adam_4_50'], np.arange(0,1,0.0001), '(4,50)'),
-    'baseline_Adam_4_100'  : (lambda x : x['baseline_Adam_4_100'], np.arange(0,1,0.01), '(4,100)'),
-    'baseline_Adam_4_100_roc'  : (lambda x : x['baseline_Adam_4_100'], np.arange(0,1,0.0001), '(4,100)'),
-    'baseline_Adam_7_10'  : (lambda x : x['baseline_Adam_7_10'], np.arange(0,1,0.01), '(7,10)'),
-    'baseline_Adam_7_10_roc'  : (lambda x : x['baseline_Adam_7_10'], np.arange(0,1,0.0001), '(7,10)'),
-    'baseline_Adam_7_50'  : (lambda x : x['baseline_Adam_7_50'], np.arange(0,1,0.01), '(7,50)'),
-    'baseline_Adam_7_50_roc'  : (lambda x : x['baseline_Adam_7_50'], np.arange(0,1,0.0001), '(7,50)'),
-    'baseline_Adam_7_100'  : (lambda x : x['baseline_Adam_7_100'], np.arange(0,1,0.01), '(7,100)'),
-    'baseline_Adam_7_100_roc'  : (lambda x : x['baseline_Adam_7_100'], np.arange(0,1,0.0001), '(7,100)'),
-#    'trunc4_limit50_roc'  : (lambda x : x['trunc4_limit50'], np.arange(0,1,0.0001), 'Decorr (4,10)'),
-    'emd'  : (lambda x : x['emd'], np.arange(0,1,0.01), 'Decorr (4,10)'),
-    'emd_clf_best'  : (lambda x : x['emd_clf_best'], np.arange(0,1,0.01), 'Decorr (4,10)'),
-    'emd_roc'  : (lambda x : x['emd'], np.arange(0,1,0.0001), 'Decorr (4,10)'),
-    'emd_clf_best_roc'  : (lambda x : x['emd_clf_best'], np.arange(0,1,0.0001), 'Decorr (4,10)'),
-    'mean_squared_error'  : (lambda x : x['mean_squared_error'], np.arange(0,1,0.01), 'Decorr (4,10)'),
-    'mean_squared_error_clf_best'  : (lambda x : x['mean_squared_error_clf_best'], np.arange(0,1,0.01), 'Decorr (4,10)'),
-    'mean_squared_error_roc'  : (lambda x : x['mean_squared_error'], np.arange(0,1,0.0001), 'Decorr (4,10)'),
-    'mean_squared_error_clf_best_roc'  : (lambda x : x['mean_squared_error_clf_best'], np.arange(0,1,0.0001), 'Decorr (4,10)'),
-    'categorical_crossentropy'  : (lambda x : x['categorical_crossentropy'], np.arange(0,1,0.01), 'Decorr (4,10)'),
-    'categorical_crossentropy_clf_best'  : (lambda x : x['categorical_crossentropy_clf_best'], np.arange(0,1,0.01), 'Decorr (4,10)'),
-    'categorical_crossentropy_roc'  : (lambda x : x['categorical_crossentropy'], np.arange(0,1,0.0001), 'Decorr (4,10)'),
-    'categorical_crossentropy_clf_best_roc'  : (lambda x : x['categorical_crossentropy_clf_best'], np.arange(0,1,0.0001), 'Decorr (4,10)'),
+    'nprongs' : (lambda x : access(x, 'nprongs'), makebins(0,10,0.1), r'$N_\mathrm{prongs}$'),
+    'tau32' : (lambda x : div(x, 'tau3', 'tau2'), makebins(0,1.2,0.01), r'$\tau_{32}$'),
+    'tau32sd' : (lambda x : div(x, 'tau3sd', 'tau2sd'), makebins(0,1.2,0.01), r'$\tau_{32}^\mathrm{sd}$'),
+    'partonm' : (lambda x : access(x, 'partonm'), makebins(0,400,5), 'Parton mass [GeV]'),
+    'msd'     : (lambda x : access(x, 'msd'), makebins(0.,400.,20.), r'$m_\mathrm{SD}$ [GeV]'),
+    'pt'        : (lambda x : access(x, 'pt'), makebins(250.,1000.,50.), r'$p_\mathrm{T}$ [GeV]'),
+    'shallow' : (lambda x : x['shallow'], makebins(0,1.2,0.01), r'Shallow (no $p_{T}$) classifier'),
+    'shallow_roc' : (lambda x : x['shallow'], makebins(0,1.2,0.0001), r'Shallow (no $p_{T}$) classifier'),
+    'baseline_Adam_4_10'  : (lambda x : x['baseline_Adam_4_10'], makebins(0,1,0.01), '(4,10)'),
+    'baseline_Adam_4_10_roc'  : (lambda x : x['baseline_Adam_4_10'], makebins(0,1,0.0001), '(4,10)'),
+    'baseline_Adam_4_50'  : (lambda x : x['baseline_Adam_4_50'], makebins(0,1,0.01), '(4,50)'),
+    'baseline_Adam_4_50_roc'  : (lambda x : x['baseline_Adam_4_50'], makebins(0,1,0.0001), '(4,50)'),
+    'baseline_Adam_4_100'  : (lambda x : x['baseline_Adam_4_100'], makebins(0,1,0.01), '(4,100)'),
+    'baseline_Adam_4_100_roc'  : (lambda x : x['baseline_Adam_4_100'], makebins(0,1,0.0001), '(4,100)'),
+    'baseline_Adam_7_10'  : (lambda x : x['baseline_Adam_7_10'], makebins(0,1,0.01), '(7,10)'),
+    'baseline_Adam_7_10_roc'  : (lambda x : x['baseline_Adam_7_10'], makebins(0,1,0.0001), '(7,10)'),
+    'baseline_Adam_7_50'  : (lambda x : x['baseline_Adam_7_50'], makebins(0,1,0.01), '(7,50)'),
+    'baseline_Adam_7_50_roc'  : (lambda x : x['baseline_Adam_7_50'], makebins(0,1,0.0001), '(7,50)'),
+    'baseline_Adam_7_100'  : (lambda x : x['baseline_Adam_7_100'], makebins(0,1,0.01), '(7,100)'),
+    'baseline_Adam_7_100_roc'  : (lambda x : x['baseline_Adam_7_100'], makebins(0,1,0.0001), '(7,100)'),
+#    'trunc4_limit50_roc'  : (lambda x : x['trunc4_limit50'], makebins(0,1,0.0001), 'Decorr (4,10)'),
+#    'emd'  : (lambda x : x['emd'], makebins(0,1,0.01), 'Decorr (4,10)'),
+#    'emd_clf_best'  : (lambda x : x['emd_clf_best'], makebins(0,1,0.01), 'Decorr (4,10)'),
+#    'emd_roc'  : (lambda x : x['emd'], makebins(0,1,0.0001), 'Decorr (4,10)'),
+#    'emd_clf_best_roc'  : (lambda x : x['emd_clf_best'], makebins(0,1,0.0001), 'Decorr (4,10)'),
+#    'mean_squared_error'  : (lambda x : x['mean_squared_error'], makebins(0,1,0.01), 'Decorr (4,10)'),
+#    'mean_squared_error_clf_best'  : (lambda x : x['mean_squared_error_clf_best'], makebins(0,1,0.01), 'Decorr (4,10)'),
+#    'mean_squared_error_roc'  : (lambda x : x['mean_squared_error'], makebins(0,1,0.0001), 'Decorr (4,10)'),
+#    'mean_squared_error_clf_best_roc'  : (lambda x : x['mean_squared_error_clf_best'], makebins(0,1,0.0001), 'Decorr (4,10)'),
+#    'categorical_crossentropy'  : (lambda x : x['categorical_crossentropy'], makebins(0,1,0.01), 'Decorr (4,10)'),
+#    'categorical_crossentropy_clf_best'  : (lambda x : x['categorical_crossentropy_clf_best'], makebins(0,1,0.01), 'Decorr (4,10)'),
+#    'categorical_crossentropy_roc'  : (lambda x : x['categorical_crossentropy'], makebins(0,1,0.0001), 'Decorr (4,10)'),
+#    'categorical_crossentropy_clf_best_roc'  : (lambda x : x['categorical_crossentropy_clf_best'], makebins(0,1,0.0001), 'Decorr (4,10)'),
 }
 
 roc_vars = {
@@ -154,12 +157,12 @@ for k,v in colls.iteritems():
                       n_batches=n_batches, partition=partition)
 
 for k in hists['t']:
-    if 'roc' in k:
-        continue
     ht = hists['t'][k]
     hq = hists['q'][k]
     for h in [ht, hq]:
         h.scale()
+    if 'roc' in k:
+        continue
     p.clear()
     p.add_hist(ht, '3-prong top', 'r')
     p.add_hist(hq, '1-prong QCD', 'k')
@@ -189,12 +192,12 @@ for k,v in colls.iteritems():
                       f_mask=f_mask)
 
 for k in hists['t']:
-    if 'roc' in k:
-        continue
     ht = hists['t'][k]
     hq = hists['q'][k]
     for h in [ht, hq]:
         h.scale()
+    if 'roc' in k:
+        continue
     p.clear()
     p.add_hist(ht, '3-prong top', 'r')
     p.add_hist(hq, '1-prong QCD', 'k')
@@ -221,14 +224,14 @@ def sculpting(name, f_pred):
     tmp_hists = {t:{} for t in thresholds}
     f_vars2d = {
       'msd' : (lambda x : (x['singletons'][:,config.gen_singletons['msd']], f_pred(x)),
-               np.arange(40,400,20.),
-               np.arange(0,1,0.0001)),
+               makebins(40,400,20.),
+               makebins(0,1,0.0001)),
       'pt' : (lambda x : (x['singletons'][:,config.gen_singletons['pt']], f_pred(x)),
-               np.arange(400,1000,50.),
-               np.arange(0,1,0.0001)),
+               makebins(400,1000,50.),
+               makebins(0,1,0.0001)),
       'partonm' : (lambda x : (x['singletons'][:,config.gen_singletons['partonm']], f_pred(x)),
-               np.arange(0,400,20.),
-               np.arange(0,1,0.0001)),
+               makebins(0,400,20.),
+               makebins(0,1,0.0001)),
       }
 
     h2d = colls['q'].draw(components=components,
@@ -263,13 +266,13 @@ def sculpting(name, f_pred):
             p.add_hist(tmp_hists[t][k], r'$\epsilon_\mathrm{bkg}=%.3f$'%(1-t), colors[i])
         p.plot(output=OUTPUT+'prognorm_'+name+'_'+k, xlabel=f_vars[k][2], logy=False)
 
-sculpting('emd', f_pred = f_vars['emd'][0])
-sculpting('emd_clf_best', f_pred = f_vars['emd_clf_best'][0])
-sculpting('mean_squared_error', f_pred = f_vars['mean_squared_error'][0])
-sculpting('mean_squared_error_clf_best', f_pred = f_vars['mean_squared_error_clf_best'][0])
-sculpting('categorical_crossentropy', f_pred = f_vars['categorical_crossentropy'][0])
-sculpting('categorical_crossentropy_clf_best', f_pred = f_vars['categorical_crossentropy_clf_best'][0])
-sculpting('tau32sd', f_pred = f_vars['tau32sd'][0]) 
-sculpting('baseline_Adam_7_100', f_pred = f_vars['baseline_Adam_7_100'][0])
-sculpting('shallow', f_pred = f_vars['shallow'][0])
+# sculpting('emd', f_pred = f_vars['emd'][0])
+# sculpting('emd_clf_best', f_pred = f_vars['emd_clf_best'][0])
+# sculpting('mean_squared_error', f_pred = f_vars['mean_squared_error'][0])
+# sculpting('mean_squared_error_clf_best', f_pred = f_vars['mean_squared_error_clf_best'][0])
+# sculpting('categorical_crossentropy', f_pred = f_vars['categorical_crossentropy'][0])
+# sculpting('categorical_crossentropy_clf_best', f_pred = f_vars['categorical_crossentropy_clf_best'][0])
+# sculpting('tau32sd', f_pred = f_vars['tau32sd'][0]) 
+# sculpting('baseline_Adam_7_100', f_pred = f_vars['baseline_Adam_7_100'][0])
+# sculpting('shallow', f_pred = f_vars['shallow'][0])
 #

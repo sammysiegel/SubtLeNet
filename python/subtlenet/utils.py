@@ -1,5 +1,6 @@
 import numpy as np 
-from collections import namedtuple
+from os import environ, getenv
+import sys
 
 import matplotlib as mpl
 mpl.use('cairo')
@@ -9,6 +10,29 @@ from matplotlib import pyplot as plt
 import seaborn
 
 DOPDF = True
+
+## turn on/off gpu
+
+def set_processor(name):
+    name = name.lower()
+    if name == 'cpu':
+        environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"         
+        environ["CUDA_VISIBLE_DEVICES"] = ""                
+        return
+    if name == 'gpu':
+        set_processor('cpu') # haha
+        del environ['CUDA_DEVICE_ORDER']
+        del environ['CUDA_VISIBLE_DEVICES']
+        return
+    sys.stderr.write('Unknown processor "%s"!\n'%name)
+
+def get_processor():
+    if (getenv('CUDA_DEVICE_ORDER') == 'PCI_BUS_ID'
+        and getenv('CUDA_VISIBLE_DEVICES') == ''):
+        return 'cpu'
+    else:
+        return 'gpu'
+
 
 ## general layout                                                                                                                      
 seaborn.set(style="ticks")
@@ -38,16 +62,16 @@ class NH1(object):
     def __init__(self, bins=[0,1]):
         assert(len(bins) > 1)
         self.bins = np.array(bins )
-        self._content = np.array([0 for x in range(len(bins)+1)], dtype=np.float64)
-        self._sumw2 = np.array([0 for x in range(len(bins)+1)], dtype=np.float64)
+        self._content = np.zeros(len(self.bins) - 1, dtype=np.float64)
+        self._sumw2 = np.zeros(len(self.bins) - 1, dtype=np.float64)
     def iter(self):
-        for x in xrange(self.bins.shape[0]+1):
+        for x in xrange(self.bins.shape[0]-1):
             yield x
     def find_bin(self, x):
-        for ix in xrange(len(self.bins)):
-            if x < self.bins[ix]:
-                return ix 
-        return len(self.bins)
+        for ix,edge in enumerate(self.bins):
+            if x <= edge:
+                return max(0, ix - 1)
+        return len(self.bins) - 1
     def get_content(self, ix):
         return self._content[ix]
     def get_error(self, ix):
@@ -68,30 +92,38 @@ class NH1(object):
         w2 = None if (weights_masked is None) else np.square(weights_masked)
         hist = np.histogram(x_masked, bins=self.bins, weights=weights_masked, density=False)[0]
         herr = np.histogram(x_masked, bins=self.bins, weights=w2, density=False)[0]
-        self._content += np.concatenate([[0],hist,[0]])
-        self._sumw2 += np.concatenate([[0],herr,[0]])
+        self._content += hist
+        self._sumw2 += herr
     def add_array(self, arr):
         self._content += arr.astype(np.float64)
     def save(self, fpath):
         save_arr = np.array([
-                np.concatenate([[0],self.bins,[0]]), 
-                self._content
+                self.bins, 
+                np.concatenate([self._content, [0]])
             ])
         np.save(fpath, save_arr)
-    def load(self, fpath):
+    def _load(self, fpath):
         load_arr = np.load(fpath)
-        self.bins = load_arr[0][1:-1]
-        self._content = load_arr[1]
+        self.bins = load_arr[0]
+        self._content = load_arr[1][:-1]
+    @classmethod
+    def load(x, fpath):
+        if isinstance(x, NH1):
+            x._load(fpath)
+        else:
+            h = NH1()
+            h._load(fpath)
+            return h
     def add_from_file(self, fpath):
         load_arr = np.load(fpath)
         try:
-            assert(np.array_equal(load_arr[0][1:-1], self.bins))
+            assert(np.array_equal(load_arr[0], self.bins))
         except AssertionError as e:
             print fpath 
             print load_arr[0]
             print self.bins 
             raise e
-        add_content = load_arr[1].astype(np.float64)
+        add_content = load_arr[1][:-1].astype(np.float64)
         self._content += add_content
     def clone(self):
         new = NH1(self.bins)
@@ -121,7 +153,7 @@ class NH1(object):
             hi = self._content.shape[0]
         return np.sum(self._content[lo:hi])
     def scale(self, scale=None):
-        norm = float(scale if scale else 1./self.integral())
+        norm = float(scale if (scale is not None) else 1./self.integral())
         self._content *= norm 
         self._sumw2 *= (norm ** 2)
     def invert(self):
@@ -134,6 +166,22 @@ class NH1(object):
             else:
                 self._content[ix] = _epsilon
                 self._sumw2[ix] = 0
+    def quantile(self, eff, interp=False):
+        den = 1. / self.integral()
+        threshold = eff * self.integral()
+        for ib,b1 in enumerate(self.bins):
+            frac1 = self.integral(hi=ib) 
+            if frac1 >= threshold:
+                if not interp or ib == 0:
+                    return b1
+
+                frac2 = self.integral(hi=(ib-1)) 
+                b2 = self.bins[ib-1]
+                b0 = (b1 + 
+                      ((threshold - frac1) * 
+                       (b2 - b1) / (frac2 - frac1)))
+                return b0
+
     def eval_array(self, arr):
         def f(x):
             return self.get_content(self.find_bin(x))
@@ -142,11 +190,11 @@ class NH1(object):
     def plot(self, color, label, errors=False):
         bin_centers = 0.5*(self.bins[1:] + self.bins[:-1])
         if errors and np.max(np.abs(self._sumw2)) > 0:
-            errs = np.sqrt(self._sumw2[1:-1])
+            errs = np.sqrt(self._sumw2)
         else:
             errs = None
         plt.errorbar(bin_centers, 
-                     self._content[1:-1],
+                     self._content,
                      yerr = errs,
                      drawstyle = 'steps-mid',
                      color=color,
@@ -158,21 +206,21 @@ class NH1(object):
         for ix in xrange(bin_centers.shape[0]):
             sumw += bin_centers[ix] * self._content[ix+1]
         return sumw / self.integral()
-    def quantile(self, threshold):
-        acc = 0 
-        threshold *= np.sum(self._content[1:-1])
-        for ix in xrange(1, self._content.shape[0]-1):
-            acc += self._content[ix]
-            if acc >= threshold:
-                return 0.5 * (self.bins[ix-1] + self.bins[ix])
+#    def quantile(self, threshold):
+#        acc = 0 
+#        threshold *= self.integral()
+#        for ix in xrange(self._content.shape[0]):
+#            acc += self._content[ix]
+#            if acc >= threshold:
+#                return 0.5 * (self.bins[ix] + self.bins[ix+1])
     def median(self):
-        return self.quantile(threshold = 0.5)
+        return self.quantile(eff = 0.5)
     def stdev(self, sheppard = False):
         # sheppard = True applies Sheppard's correction, assuming constant bin-width
         mean = self.mean()
         bin_centers = 0.5 * (self.bins[:-1] + self.bins[1:])
         integral = self.integral()
-        variance = np.sum(bin_centers * bin_centers * self._content[1:-1])
+        variance = np.sum(bin_centers * bin_centers * self._content)
         variance -= integral * mean * mean
         variance /= (integral - 1)
         if sheppard:
@@ -185,21 +233,21 @@ class NH2(object):
     def __init__(self, binsx, binsy):
         self.binsx = binsx 
         self.binsy = binsy 
-        self._content = np.zeros([len(binsx)+1, len(binsy)+1], dtype=np.float64)
-        self._sumw2 = np.zeros([len(binsx)+1, len(binsy)+1], dtype=np.float64)
+        self._content = np.zeros([len(binsx)-1, len(binsy)-1], dtype=np.float64)
+        self._sumw2 = np.zeros([len(binsx)-1, len(binsy)-1], dtype=np.float64)
     def _find_bin(self, val, axis):
         bins = self.binsx if (axis == 0) else self.binsy 
         for ix,x in enumerate(bins):
-            if val < x:
+            if val <= x:
                 return ix 
-        return len(bins)
+        return len(bins) - 1
     def find_bin_x(self, val):
         return self._find_bin(val, 0)
     def find_bin_y(self, val):
         return self._find_bin(val, 1)
     def _project(self, onto_axis, min_bin=None, max_bin=None):
         bins = self.binsx if (onto_axis == 0) else self.binsy 
-        integrate_axis = int(not(onto_axis))
+        integrate_axis = 1 - onto_axis
         h1 = NH1(bins)
         if integrate_axis == 0:
             s = self._content[min_bin:max_bin,:]
@@ -213,7 +261,7 @@ class NH2(object):
         h1._sumw2 = proj_e
         return h1
     def _project_by_val(self, onto_axis, min_bin=None, min_cut=None, max_bin=None, max_cut=None):
-        integrate_axis = int(not(onto_axis))
+        integrate_axis = 1 - onto_axis
         if min_cut:
             min_bin = self._find_bin(min_cut, integrate_axis)
         if max_cut:
@@ -242,9 +290,8 @@ class NH2(object):
                               bins=(self.binsx, self.binsy), 
                               weights=w2, 
                               normed=False)[0]
-        # over/underflow bins are zeroed out
-        self._content += np.lib.pad(hist, (1,1), 'constant', constant_values=0) 
-        self._sumw2 += np.lib.pad(herr, (1,1), 'constant', constant_values=0) 
+        self._content += hist 
+        self._sumw2 += herr 
     def integral(self):
         return np.sum(self._content)
     def scale(self, val=None):
@@ -255,7 +302,7 @@ class NH2(object):
         plt.clf()
         ax = plt.gca()
         ax.grid(True,ls='-.',lw=0.4,zorder=-99,color='gray',alpha=0.7,which='both')
-        plt.imshow(self._content[1:-1,1:-1].T, 
+        plt.imshow(self._content.T, 
                    extent=(self.binsx[0], self.binsx[-1], self.binsy[0], self.binsy[-1]),
                    aspect=(self.binsx[-1]-self.binsx[0])/(self.binsy[-1]-self.binsy[0]),
                    cmap=cmap,
@@ -284,7 +331,7 @@ class Plotter(object):
         self.ymin = None
         self.ymax = None
         self.auto_yrange = False
-    def add_hist(self, hist, label, plotstyle):
+    def add_hist(self, hist, label='', plotstyle='b'):
         self.hists.append((hist, label, plotstyle))
     def clear(self):
         plt.clf()
@@ -325,11 +372,13 @@ p = Plotter()
 
 
 class Roccer(object):
-    def __init__(self):
+    def __init__(self, y_range=range(-5,1), axis=[0.2,1,0.0005,1]):
         self.cfgs = []
-        self.axis = [0,1,0.0005,1]
-        self.yticks = [10**x for x in xrange(-5,1)]
-        self.yticklabels = [('1' if x==0 else r'$10^{%i}$'%x) for x in xrange(-5,1)]
+        self.axis = axis
+        self.yticks = [10**x for x in y_range]
+        self.yticklabels = [('1' if x==0 else r'$10^{%i}$'%x) for x in y_range]
+        self.xticks = [0.2, 0.4, 0.6, 0.8, 1]
+        self.xticklabels = map(str, self.xticks)
     def add_vars(self, sig_hists, bkg_hists, labels, order=None):
         if order is None:
             order = sorted(sig_hists)
@@ -362,7 +411,7 @@ class Roccer(object):
         fig, ax = plt.subplots(1)
         ax.get_xaxis().set_tick_params(which='both',direction='in')
         ax.get_yaxis().set_tick_params(which='both',direction='in')
-        ax.grid(True,ls='-.',lw=0.4,zorder=-99,color='gray',alpha=0.7,which='both')
+        ax.grid(True,ls='-.',lw=0.4,zorder=-99,color='gray',alpha=0.7,which='major')
 
         min_value = 1
 
@@ -403,13 +452,20 @@ class Roccer(object):
             plt.plot(epsilons_sig, epsilons_bkg, color=color, label=label, linewidth=2, ls=linestyle)
 
         plt.axis(self.axis)
+        ax = plt.gca()
+        #plt.set_xlim(self.axis[:2])
+        #plt.set_ylim(self.axis[-2:])
+        ax.tick_params(axis='both', which='major', labelsize=20)
+        ax.tick_params(axis='both', which='minor', labelsize=0)
         plt.yscale('log', nonposy='clip')
+        plt.xscale('log', nonposx='clip')
         plt.legend(loc=2, fontsize=22)
         plt.ylabel('Background fake rate', fontsize=24)
         plt.xlabel('Signal efficiency', fontsize=24)
-        ax.tick_params(axis='both', which='major', labelsize=20)
         ax.set_yticks(self.yticks)
         ax.set_yticklabels(self.yticklabels)
+        ax.set_xticks(self.xticks)
+        ax.set_xticklabels(self.xticklabels)
 
         print 'Creating',output
         plt.savefig(output+'.png',bbox_inches='tight',dpi=300)

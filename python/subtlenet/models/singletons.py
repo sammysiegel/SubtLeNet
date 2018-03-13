@@ -1,10 +1,8 @@
-from os import environ
-environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-environ["CUDA_VISIBLE_DEVICES"] = ""
-
 from _common import *
 from ..generators.gen_singletons import make_coll, generate
 from ..generators import gen_singletons as generator
+
+utils.set_processor('cpu')
 
 ''' 
 some global definitions

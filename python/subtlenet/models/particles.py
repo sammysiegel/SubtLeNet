@@ -1,15 +1,15 @@
 #!/usr/bin/env python2.7
 
 from _common import *
-from ..generators.gen import make_coll, generate, get_dims
-from ..generators import gen as generator
+from ..generators.gen_new import make_coll, Generator, get_dims
+from ..generators import gen_new as generator
 
 ''' 
 some global definitions
 ''' 
 
 NEPOCH = 50
-VERSION = 4
+VERSION = '4'
 MODELDIR = environ.get('MODELDIR', 'models/') + '/particles/'
 BASEDIR = environ['BASEDIR']
 OPTIMIZER = 'Adam'
@@ -26,8 +26,8 @@ def instantiate(trunc=4, limit=50):
     config.limit = limit
     _APOSTLE = 'v%s_trunc%i_limit%i'%(str(VERSION), generator.truncate, config.limit)
     system('mkdir -p %s/%s/'%(MODELDIR,_APOSTLE))
-    system('cp -v %s %s/%s/trainer.py'%(sys.argv[0], MODELDIR, _APOSTLE))
-    system('cp -v %s %s/%s/lib.py'%(__file__.replace('.pyc','.py'), MODELDIR, _APOSTLE))
+    system('cp -v %s %s/%s/trainer_%s.py'%(sys.argv[0], MODELDIR, _APOSTLE, VERSION))
+    system('cp -v %s %s/%s/lib_%s.py'%(__file__.replace('.pyc','.py'), MODELDIR, _APOSTLE, VERSION))
 
     # instantiate data loaders 
     top = make_coll(BASEDIR + '/PARTITION/Top_*_CATEGORY.npy')
@@ -40,9 +40,12 @@ def instantiate(trunc=4, limit=50):
         fsetup.write('''
 from subtlenet import config
 from subtlenet.generators import gen as generator
+from subtlenet.utils import set_processor
 config.limit = %i
 generator.truncate = %i
-'''%(config.limit, generator.truncate))
+set_processor("%s")
+config.smear_params = %s
+'''%(config.limit, generator.truncate, utils.get_processor(), repr(config.smear_params)))
 
     return data, dims
 
@@ -52,23 +55,38 @@ first build the classifier!
 '''
 
 # set up data 
-def setup_data(data):
-    opts = {}; opts.update(train_opts)
+def setup_data(data, **kwargs):
+    kwargs.update(train_opts)
+    if 'smear_params' not in kwargs:
+        kwargs['smear_params'] = config.smear_params
     gen = {
-        'train' : generate(data, partition='train', batch=500, **opts),
-        'validation' : generate(data, partition='validate', batch=2000, **opts),
-        'test' : generate(data, partition='test', batch=10, **opts),
+        'train' : Generator(data, partition='train', batch=500, **kwargs)(),
+        'validation' : Generator(data, partition='validate', batch=2000, **kwargs)(),
+        'test' : Generator(data, partition='test', batch=10, **kwargs)(),
         }
     return gen
 
-def setup_adv_data(data):
-    opts = {'decorr_mass':True,
-            'window':True}
-    opts.update(train_opts)
+def setup_adv_data(data, **kwargs):
+    kwargs.update( {'decorr_mass':True} )
+    kwargs.update(train_opts)
+    if 'smear_params' not in kwargs:
+        kwargs['smear_params'] = config.smear_params
     gen = {
-        'train' : generate(data, partition='train', batch=1000, **opts),
-        'validation' : generate(data, partition='validate', batch=2000, **opts),
-        'test' : generate(data, partition='test', batch=10, **opts),
+        'train' : Generator(data, partition='train', batch=1000, **kwargs)(),
+        'validation' : Generator(data, partition='validate', batch=2000, **kwargs)(),
+        'test' : Generator(data, partition='test', batch=10, **kwargs)(),
+        }
+    return gen
+
+def setup_kl_data(data, **kwargs):
+    kwargs.update( {'kl_decorr_mass':True} )
+    kwargs.update(train_opts)
+    if 'smear_params' not in kwargs:
+        kwargs['smear_params'] = config.smear_params
+    gen = {
+        'train' : Generator(data, partition='train', batch=1000, **kwargs)(),
+        'validation' : Generator(data, partition='validate', batch=2000, **kwargs)(),
+        'test' : Generator(data, partition='test', batch=10, **kwargs)(),
         }
     return gen
 
@@ -76,16 +94,18 @@ def setup_adv_data(data):
 def compilation_args(name, **kwargs):
     if name == 'classifier':
         return {
-            'optimizer' : getattr(keras_objects, OPTIMIZER)(lr=0.0005),
+            'optimizer' : getattr(keras_objects, OPTIMIZER)(lr=0.0005, decay=1.0E-05), # decay is new
             'loss' : 'categorical_crossentropy',
             'metrics' : ['accuracy']
         }
     if name == 'adversary':
         N = range(kwargs['N'])
+        if type(kwargs['w_adv']) != list:
+            kwargs['w_adv'] = [kwargs['w_adv'] for _ in N]
         return {
-            'optimizer' : getattr(keras_objects, OPTIMIZER)(lr=0.00025),
+            'optimizer' : getattr(keras_objects, OPTIMIZER)(lr=0.00025, decay=1.0E-05), # decay is new
             'loss' : ['categorical_crossentropy'] + [kwargs['loss'] for _ in N],
-            'loss_weights' : [kwargs['w_clf']] + [kwargs['w_adv'] for _ in N]
+            'loss_weights' : [kwargs['w_clf']] + kwargs['w_adv']
         }
 
 # this is purely a discriminatory classifier
@@ -95,6 +115,8 @@ def build_classifier(dims):
     input_pt = Input(shape=(1,), name='input_pt')
     inputs = [input_particles, input_mass, input_pt]
 
+    LSTMImplementation = CuDNNLSTM if (utils.get_processor() == 'gpu') else LSTM
+
     # now build the particle network
     h = BatchNormalization(momentum=0.6, name='f_bn0')(input_particles)
     h = Conv1D(32, 2, activation='relu', kernel_initializer='lecun_uniform', 
@@ -103,7 +125,7 @@ def build_classifier(dims):
     h = Conv1D(16, 4, activation='relu', kernel_initializer='lecun_uniform', 
                padding='same', name='f_c1')(h)
     h = BatchNormalization(momentum=0.6, name='f_bn2')(h)
-    h = CuDNNLSTM(100, name='f_lstm')(h)
+    h = LSTMImplementation(100, name='f_lstm')(h)
     h = BatchNormalization(momentum=0.6, name='f_bn3')(h)
     h = Dense(100, activation='relu', kernel_initializer='lecun_uniform', name='f_d0')(h)
     h = BatchNormalization(momentum=0.6, name='f_bn4')(h)
@@ -128,7 +150,7 @@ def build_classifier(dims):
 
     classifier = Model(inputs=inputs, outputs=[y_hat])
     for l in classifier.layers:
-        l.freezable =  l.name.startswith('f_')
+        l.freezable = l.name.startswith('f_')
     #classifier.compile(optimizer=Adam(lr=0.0002),
     classifier.compile(**compilation_args('classifier'))
 
@@ -139,12 +161,34 @@ def build_classifier(dims):
     return classifier
 
 
+def build_kl_mass(clf, w_clf=0.0001, w_kl=1, w_adv=None, loss=sculpting_kl_penalty):
+    if w_adv is not None:
+        w_kl = w_adv # backwards compatibility
+    kl_input = Input(shape=(config.n_decorr_bins + 1,), name='kl_input')
+    y_hat = clf.outputs[0]
+    tag = Lambda(lambda x : x[:,-1:], output_shape=(1,))(y_hat)
+    kl_output = concatenate([kl_input, tag], axis=-1, name='kl')
+    inputs = clf.inputs + [kl_input]
+    outputs = clf.outputs + [kl_output]
+
+    kl = Model(inputs=inputs, outputs=outputs)
+    kl.compile(optimizer=Adam(lr=0.0001),
+               loss=['categorical_crossentropy', sculpting_kl_penalty],
+               loss_weights=[w_clf, w_kl])
+
+    print '########### KL-MODIFIED ############'
+    kl.summary()
+    print '###################################'
+
+    return kl
+
+
 def build_adversary(clf, loss, scale, w_clf, w_adv, n_outputs=1):
     if loss == 'mean_squared_error':
         config.n_decorr_bins = 1
     y_hat = clf.outputs[0]
     inputs= clf.inputs
-    kin_hats = Adversary(config.n_decorr_bins, n_outputs=1, scale=scale)(y_hat)
+    kin_hats = Adversary(config.n_decorr_bins, n_outputs=n_outputs, scale=scale)(y_hat)
     adversary = Model(inputs=inputs,
                       outputs=[y_hat]+kin_hats)
     adversary.compile(**compilation_args('adversary', 
@@ -152,6 +196,13 @@ def build_adversary(clf, loss, scale, w_clf, w_adv, n_outputs=1):
                                          w_adv=w_adv, 
                                          N=n_outputs, 
                                          loss=loss))
+
+    print '########### ADVERSARY ############'
+    adversary.summary()
+    print '###################################'
+
+    return adversary
+
 
     print '########### ADVERSARY ############'
     adversary.summary()
@@ -211,6 +262,7 @@ def partial_freeze(model, compargs):
     clone.compile(**compargs)
     return clone
 
+
 # train any model
 def train(model, name, train_gen, validation_gen, save_clf_params=None):
     if save_clf_params is not None:
@@ -256,11 +308,18 @@ def infer(modelh5, name):
     msd_index = config.gen_singletons['msd']
     pt_index = config.gen_singletons['pt']
 
+    calo = None
+    if config.smear_params is not None:
+        calo = CaloSmear(*config.smear_params) 
+
     def predict_t(data):
         msd = data['singletons'][:,msd_index] * msd_norm_factor
         pt = (data['singletons'][:,pt_index] - config.min_pt) * pt_norm_factor
         if msd.shape[0] > 0:
-            particles = data['particles'][:,:config.limit,:generator.truncate]
+            particles = data['particles'][:,:config.limit,:]
+            if calo:
+                particles = calo(particles)
+            particles = particles[:,:,:generator.truncate]
             r_t = model.predict([particles,msd,pt])[:,config.n_truth-1]
         else:
             r_t = np.empty((0,))
