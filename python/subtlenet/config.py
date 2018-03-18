@@ -84,11 +84,17 @@ _gen_props = {
     "3_4_1" : (0.000000,1.000000),
         }
 
+
 gen_singletons = {v:i for i,v in enumerate(_gen_singletons)}
 
-gen_default_variables = _gen_singletons[:]
-for bad in ['eventNumber', 'nprongs', 'partonm', 'partonpt']:
-    gen_default_variables.remove(bad)
+def set_gen_variables(l=_gen_singletons):
+    global gen_default_variables, gen_default_mus, gen_default_sigmas
+    gen_default_variables = l[:]
+    for bad in ['eventNumber', 'nprongs', 'partonm', 'partonpt']:
+        if bad in gen_default_variables:
+            gen_default_variables.remove(bad)
 
-gen_default_mus = [_gen_props[x][0] for x in gen_default_variables]
-gen_default_sigmas = [_gen_props[x][1] for x in gen_default_variables]
+    gen_default_mus = [_gen_props[x][0] for x in gen_default_variables]
+    gen_default_sigmas = [_gen_props[x][1] for x in gen_default_variables]
+
+set_gen_variables()

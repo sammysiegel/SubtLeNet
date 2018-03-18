@@ -332,6 +332,8 @@ class Plotter(object):
         self.ymax = None
         self.auto_yrange = False
     def add_hist(self, hist, label='', plotstyle='b'):
+        if type(plotstyle) == int:
+            plotstyle = default_colors[plotstyle]
         self.hists.append((hist, label, plotstyle))
     def clear(self):
         plt.clf()

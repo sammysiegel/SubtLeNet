@@ -2,6 +2,15 @@ import numpy as np
 import keras.backend as K
 import tensorflow as tf
 
+
+def min_pred(y_true, y_pred):
+    # simple loss - just return the minimum of y_pred :) 
+    min_ = K.min(y_pred, axis=-1) 
+    avg_ = K.sum(y_pred, axis=0) / K.cast(K.shape(y_pred)[0], 'float32')
+    var_ = K.var(avg_)
+    return min_ + (0.01 * var_)
+
+
 def _weighted_KL(Q_data, P_data, Q_weight=None, P_weight=None):
     if P_weight is not None:
         P = K.sum(P_data * P_weight, axis=0) 

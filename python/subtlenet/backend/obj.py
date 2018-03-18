@@ -253,7 +253,7 @@ class _DataCollection(object):
                         scv = sanity_check.values()
                         if any([x != scv[0] for x in scv]):
                             print 'Found an inconsistency in %s'%( 
-                                        self.obje.cts[partition]['singletons'].last_loaded
+                                        self.objects[partition]['singletons'].last_loaded
                                     )
                             print 'partition = ',partition
                             print 'We are in batch %i out of %i'%(ib, n_batches)

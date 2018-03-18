@@ -28,7 +28,8 @@ def instantiate(name='SimpleSmear'):
 # auto-generated. do not edit!
 from subtlenet import config
 from subtlenet.generators import toy as generator
-''')
+gen = generator.%s
+'''%name)
 
     gen = getattr(generator, name)
 
@@ -66,6 +67,22 @@ def build_linear(dims):
     print '###################################'
 
     return classifier
+
+def build_discrete_adv(clf, scale, w_clf, w_adv, n_class):
+    inputs = clf.inputs
+    y_hat = clf.outputs[0]
+    pred = Adversary(n_class, n_outputs=1, scale=scale)(y_hat)
+    stack = Model(inputs=inputs,
+                  outputs=[y_hat]+pred)
+    stack.compile(optimizer=Adam(lr=0.001),
+                  loss=['mse', 'categorical_crossentropy'],
+                  loss_weights=[w_clf, w_adv])
+
+    print '########### STACK ############'
+    stack.summary()
+    print '###################################'
+
+    return stack
 
 def build_continuous_adv(clf, scale, w_clf, w_adv):
     inputs = clf.inputs

@@ -24,9 +24,6 @@ def make_coll(fpath, categories=['singletons','particles']):
 
 
 class Generator(_Generator):
-    def __init__(self):
-        return
-
     def __init__(self, 
                  collections, partition='train', batch=32, 
                  learn_mass=False, learn_pt=False,
@@ -43,7 +40,6 @@ class Generator(_Generator):
         self._set_mass_reshaper()
         self.learn_mass = learn_mass
         self.learn_pt = learn_pt
-
 
     def __call__(self):
         while True: 
