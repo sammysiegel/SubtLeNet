@@ -30,7 +30,7 @@ def instantiate():
         fsetup.write('''
 # auto-generated. do not edit!
 from subtlenet import config
-from subtlenet.generators import gen_singletons as generator
+from subtlenet.generators import gen_auto as generator
 config.gen_singletons = %s
 config.gen_default_variables = %s
 config.gen_default_mus = %s

@@ -13,7 +13,8 @@ from ..utils import NH1, NH2
 
 _partitions = ['train', 'test', 'validate']
 _RANDOMIZE = True
-
+GUARANTEED = 'singletons'
+ADD_DEFAULTS = True
 
 '''data format for training
 
@@ -37,7 +38,7 @@ def _global_inference_target(args):
         v()
     data = {k:v.data for k,v in ldata.iteritems()} 
     inference = f(data)
-    out_name = ldata['singletons'].fpath.replace('singletons', name)
+    out_name = ldata[GUARANTEED].fpath.replace(GUARANTEED, name)
     np.save(out_name, inference)
 
 
@@ -122,8 +123,8 @@ class _DataCollection(object):
         self.objects = {part:{} for part in _partitions}
         self.weight = 'ptweight_scaled'
         self.fpath = None
-        self.order = None
-        self._counter = 0
+        self.order = {}
+        self._counter = {}
         self.n_available = None
 
 
@@ -137,7 +138,9 @@ class _DataCollection(object):
                              the partition
         '''
 
-        names = categories + [self.weight, 'truth']
+        names = categories 
+        if ADD_DEFAULTS:
+            names += [self.weight, 'truth']
         self.fpath = fpath 
         for part in _partitions:
             basefiles = sorted(glob(fpath.replace('CATEGORY',names[0]).replace('PARTITION',part)))
@@ -160,9 +163,10 @@ class _DataCollection(object):
                 'partition %s had %i missing inputs'%(part, n_missing)
             for n,fs in to_add.iteritems():
                 self.objects[part][n] = _DataObject(fs)
-        self.order = range(len(self.objects.values()[0].values()[0].inputs))
-        if _RANDOMIZE:
-            np.random.shuffle(self.order)
+            self._counter[part] = 0
+            self.order[part] = range(len(self.objects[part].values()[0].inputs))
+            if _RANDOMIZE:
+                np.random.shuffle(self.order[part])
 
 
     def get(self, partition, indices=None):
@@ -185,9 +189,9 @@ class _DataCollection(object):
             for o in self.objects[p].values():
                 o.refresh()
 
-        self._counter = 0
-        if _RANDOMIZE:
-            np.random.shuffle(self.order)
+            self._counter[p]= 0
+            if _RANDOMIZE:
+                np.random.shuffle(self.order[p])
 
 
     def repartition(self, partition):
@@ -203,14 +207,14 @@ class _DataCollection(object):
         objs = self.objects[partition]
         self.n_available = None 
         if idx < 0:
-            if (self._counter == len(self.order)):
+            if (self._counter[partition] == len(self.order[partition])):
                 if repartition:
                     self.repartition(partition)
                 else:
                     return False
-            idx = self.order[self._counter]
+            idx = self.order[partition][self._counter[partition]]
             if memory:
-                self._counter += 1 
+                self._counter[partition] += 1 
         for name,obj in objs.iteritems():
             dry = (components and (name not in components))
             obj.load(idx=idx, memory=memory, dry=dry, lazy=lazy)
@@ -235,12 +239,13 @@ class _DataCollection(object):
                     print 'ERROR - last loaded data was not sane!'
                     continue
                 N = ldata[components[0]].data.shape[0]
-                if normalize and self.weight in components and batch:
-                    ldata[self.weight].data /= ldata[self.weight].data.shape[0] 
-                    ldata[self.weight].data *= 100
-                        # normalize the weight to the size of batches
-                else:
-                    ldata[self.weight].data /= 100 
+                if self.weight in components:
+                    if normalize and batch:
+                        ldata[self.weight].data /= ldata[self.weight].data.shape[0] 
+                        ldata[self.weight].data *= 100
+                            # normalize the weight to the size of batches
+                    else:
+                        ldata[self.weight].data /= 100 
                 if batch:
                     n_batches = max(1,int(floor(N * 1. / batch + 0.5)))
                     for ib in xrange(n_batches):
@@ -253,7 +258,7 @@ class _DataCollection(object):
                         scv = sanity_check.values()
                         if any([x != scv[0] for x in scv]):
                             print 'Found an inconsistency in %s'%( 
-                                        self.objects[partition]['singletons'].last_loaded
+                                        self.objects[partition][GUARANTEED].last_loaded
                                     )
                             print 'partition = ',partition
                             print 'We are in batch %i out of %i'%(ib, n_batches)
@@ -289,7 +294,8 @@ class _DataCollection(object):
         hists = {var:NH1(x[1]) for var,x in f_vars.iteritems()}
         hists2d = {var:NH2(x[1],x[2]) for var,x in f_vars2d.iteritems()}
         i_batches = 0 
-        gen = self.generator(components+[self.weight, 'truth'], partition, batch=None, lazy=False)
+        gc = components + ([self.weight, 'truth'] if ADD_DEFAULTS else [])
+        gen = self.generator(gc, partition, batch=None, lazy=False)
         while True:
             try:
                 data = {k:v.data for k,v in next(gen).iteritems()}
@@ -359,7 +365,8 @@ class _DataCollection(object):
 
 
     def infer(self, components, f, name, partition='test', ncores=1):
-        gen = self.generator(components+[self.weight, 'truth'], partition, batch=None, lazy=(ncores>1))
+        gc = components + ([self.weight, 'truth'] if ADD_DEFAULTS else [])
+        gen = self.generator(gc, partition, batch=None, lazy=(ncores>1))
         starttime = time()
         if ncores == 1:
             counter = 0 
@@ -368,7 +375,7 @@ class _DataCollection(object):
                     stdout.write('%i (%i s)\r'%(counter, time()-starttime)); stdout.flush(); counter += 1 
                     data = {k:v.data for k,v in next(gen).iteritems()}
                     inference = f(data)
-                    out_name = self.objects[partition]['singletons'].last_loaded.replace('singletons', name)
+                    out_name = self.objects[partition][GUARANTEED].last_loaded.replace(GUARANTEED, name)
                     np.save(out_name, inference)
 
                 except StopIteration:
@@ -401,9 +408,10 @@ class GenCollection(_DataCollection):
             numpy array of data 
         '''
         data = super(GenCollection, self).get(partition,indices)
-        data['weight'] = data[self.weight]
-        if self.n_available is not None:
-            data['label'] = LazyData(data = self.label * np.ones(data['weight'].data.shape))
+        if self.weight in data:
+            data['weight'] = data[self.weight]
+            if self.n_available is not None:
+                data['label'] = LazyData(data = self.label * np.ones(data['weight'].data.shape))
         return data 
 
 class PFSVCollection(_DataCollection):

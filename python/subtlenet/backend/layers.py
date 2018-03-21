@@ -9,21 +9,49 @@ import tensorflow as tf
 from .. import config
 
 
+def phi_diff(phi1, phi2):
+    phi1 = tf.mod(phi1, 2*np.pi)
+    phi2 = tf.mod(phi2, 2*np.pi)
+    diff = phi2 - phi1
+    return tf.minimum(diff, 2*np.pi - diff)
+    # x1 = tf.complex(0, phi1)
+    # x2 = tf.complex(0, phi2)
+    # return tf.arg(tf.exp(x1) / tf.exp(x2))
+
+def phi_bound(x):
+    # assumes that two angles are in [0,2pi] before subtraction
+    return tf.minimum(x, 2*np.pi - x)
+    # return K.abs(tf.atan(tf.tan(x)))
+    # return tf.acos(tf.cos(x))
+
+def detaphi_map(x):
+    eta = K.expand_dims(x[:,0,:], axis=1)
+    phi = K.expand_dims(x[:,1,:], axis=1)
+    return K.concatenate([eta, phi_bound(phi)], axis=1)
+
 class KMeans(Layer):
     def __init__(self, k,
+                 R=0.4,
+                 flat_unclustered=False,
+                 linear_unclustered=False,
                  kernel_initializer='glorot_uniform',
                  kernel_regularizer=None,
                  kernel_constraint=None,
+                 etaphi=False,
                  **kwargs):
         if 'input_shape' not in kwargs and 'input_dim' in kwargs:
             kwargs['input_shape'] = (kwargs.pop('input_dim'),)
         super(KMeans, self).__init__(**kwargs)
         self.k = k 
+        self.R = R
         self.kernel_initializer = initializers.get(kernel_initializer)
         self.kernel_regularizer = regularizers.get(kernel_regularizer)
         self.kernel_constraint = constraints.get(kernel_constraint)
         self.input_spec = InputSpec(min_ndim=2)
         self.supports_masking = True
+        self.etaphi = etaphi
+        self.flat_unclustered = flat_unclustered
+        self.linear_unclustered = linear_unclustered
 
     def build(self, input_shape):
         assert len(input_shape) == 2
@@ -40,14 +68,30 @@ class KMeans(Layer):
     def call(self, inputs):
         # (batch_size, input_dim, newaxis) - (1, input_dim, k) = (batch_size, input_dim, k)
         diff = K.expand_dims(inputs) - self.centers 
+        if self.etaphi:
+            diff = detaphi_map(diff) / self.R
         d = K.square(diff) 
-        return K.sum(d, axis=1) # sum over input_dim axis
+        out = K.sum(d, axis=1) # sum over input_dim axis -> (batch_size, k)
+        if self.flat_unclustered:
+            ones = K.expand_dims(K.ones_like(inputs[:,0])) # (batch_size,1)
+            out = K.concatenate([out, ones], axis=-1)
+            # out = K.relu(out - 1) + 1
+        elif self.linear_unclustered:
+            # out is the Euclidean distance in our input space
+            # now compute a linear-radial distance for far-away points
+            a = 0.5; b = ((self.R / 2 - 0.125) ** 2) - 0.0625 # gives an intersection at R
+            lrd = a * K.sqrt(out) + b
+            out = K.minimum(out, lrd)
+        return out
 
     def compute_output_shape(self, input_shape):
         assert input_shape and len(input_shape) == 2
         assert input_shape[1]
         output_shape = list(input_shape)
-        output_shape[1] = self.k
+        if self.flat_unclustered:
+            output_shape[1] = self.k + 1 
+        else: 
+            output_shape[1] = self.k
         return tuple(output_shape)
 
     def get_config(self):

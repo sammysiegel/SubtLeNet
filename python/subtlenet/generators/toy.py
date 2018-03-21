@@ -34,7 +34,7 @@ class RadialClustering(_Generator):
         for r_ in self.radii:
             r = np.random.normal(r_, self.sigma, (self.batch_size))
             #phi = 2 * 3.14159 * np.random.rand(self.batch_size)
-            phi = (np.pi * np.random.randint(0, 2, self.batch_size)) + np.pi/4.
+            phi = (np.pi * np.random.randint(0, 2, self.batch_size)) + r_ 
             cos_theta = 2 * np.random.rand(self.batch_size) - 1
             sin_theta = np.sqrt(1 - cos_theta**2)
             x = r * np.cos(phi) * sin_theta
