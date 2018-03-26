@@ -13,6 +13,7 @@ NEPOCH = 50
 VERSION = 0
 MODELDIR = environ.get('MODELDIR', 'models/') + '/exc/'
 BASEDIR = environ['BASEDIR']
+R = 1
 _APOSTLE = None
 encoded_size = 4
 
@@ -37,7 +38,7 @@ from subtlenet.generators import exc as generator
     zh = make_coll(BASEDIR + '/PARTITION/*ZvvHbb_*_CATEGORY.npy')
 
 #    data = [vbf, zh]
-    data = [vbf]
+    data = [zh]
     dims = get_dims(data[0])
 
     return data, dims
@@ -55,8 +56,8 @@ def setup_data(*args, **kwargs):
 def build_simple(dims, ks):
     inputs  = Input(shape=dims, name='input')
     opts = {
-            'linear_unclustered' : True,
-            'R' : 1,
+            'linear_unclustered' : 0.01,
+            'R' : R,
             'etaphi' : True,
            }
     kmeans = [KMeans(k, name='kmeans%i'%k, **opts)(inputs) for k in ks]

@@ -33,7 +33,7 @@ class KMeans(Layer):
     def __init__(self, k,
                  R=0.4,
                  flat_unclustered=False,
-                 linear_unclustered=False,
+                 linear_unclustered=None,
                  kernel_initializer='glorot_uniform',
                  kernel_regularizer=None,
                  kernel_constraint=None,
@@ -43,7 +43,7 @@ class KMeans(Layer):
             kwargs['input_shape'] = (kwargs.pop('input_dim'),)
         super(KMeans, self).__init__(**kwargs)
         self.k = k 
-        self.R = R
+        self.R0 = R
         self.kernel_initializer = initializers.get(kernel_initializer)
         self.kernel_regularizer = regularizers.get(kernel_regularizer)
         self.kernel_constraint = constraints.get(kernel_constraint)
@@ -69,19 +69,19 @@ class KMeans(Layer):
         # (batch_size, input_dim, newaxis) - (1, input_dim, k) = (batch_size, input_dim, k)
         diff = K.expand_dims(inputs) - self.centers 
         if self.etaphi:
-            diff = detaphi_map(diff) / self.R
+            diff = detaphi_map(diff) / self.R0
         d = K.square(diff) 
-        out = K.sum(d, axis=1) # sum over input_dim axis -> (batch_size, k)
+        R = K.sum(d, axis=1) # sum over input_dim axis -> (batch_size, k)
         if self.flat_unclustered:
             ones = K.expand_dims(K.ones_like(inputs[:,0])) # (batch_size,1)
-            out = K.concatenate([out, ones], axis=-1)
+            out = K.concatenate([R, ones], axis=-1)
             # out = K.relu(out - 1) + 1
-        elif self.linear_unclustered:
-            # out is the Euclidean distance in our input space
+        elif self.linear_unclustered is not None:
+            # R is the Euclidean distance in our input space
             # now compute a linear-radial distance for far-away points
-            a = 0.5; b = ((self.R / 2 - 0.125) ** 2) - 0.0625 # gives an intersection at R
-            lrd = a * K.sqrt(out) + b
-            out = K.minimum(out, lrd)
+            a = self.linear_unclustered; b = 1 - a # gives an intersection at R=R0
+            lrd = a * K.sqrt(R) + b
+            out = K.minimum(R, lrd) # assumes a <= 1, so that there is only one positive intersection
         return out
 
     def compute_output_shape(self, input_shape):

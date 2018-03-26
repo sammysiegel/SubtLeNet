@@ -48,7 +48,7 @@ class Generator(_Generator):
             weights = []
             for c in self.collections:
                 data = {k:v.data for k,v in next(self.generators[c]).iteritems()}
-                i = [data['particles'][0,:,:2]]
+                i = [data['particles'][0,:,:2], data['particles'][0,:,4]]
                 pt = data['particles'][0,:,2] / SCALE
                 
                 ones = np.ones((1,))
