@@ -20,6 +20,7 @@ from ..backend.callbacks import *
 from ..backend.losses import *
 from ..backend.smear import *
 from ..backend.keras_objects import *
+from ..backend import obj
 from ..backend import keras_objects
 
 # train any model

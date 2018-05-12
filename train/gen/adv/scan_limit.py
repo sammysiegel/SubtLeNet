@@ -84,7 +84,7 @@ order = [
         'tau32',
         'tau32sd',
         'shallow_roc',
-        'baseline_Adam_4_10_roc',
+#        'baseline_Adam_4_10_roc',
         'baseline_Adam_4_50_roc',
         'baseline_Adam_4_100_roc',
         ]

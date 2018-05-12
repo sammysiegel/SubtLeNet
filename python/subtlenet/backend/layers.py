@@ -82,6 +82,8 @@ class KMeans(Layer):
             a = self.linear_unclustered; b = 1 - a # gives an intersection at R=R0
             lrd = a * K.sqrt(R) + b
             out = K.minimum(R, lrd) # assumes a <= 1, so that there is only one positive intersection
+        else:
+            out = R
         return out
 
     def compute_output_shape(self, input_shape):

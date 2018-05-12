@@ -14,6 +14,8 @@ from mpl_toolkits.mplot3d import Axes3D
 from scipy.interpolate import interp1d
 from scipy.stats import gaussian_kde
 
+from subtlenet import config
+
 
 train.NEPOCH = 10
 
@@ -21,7 +23,7 @@ data, dims = train.instantiate()
 
 gen = train.setup_data(data)
 
-clusterer, encoder = train.build_model(dims)
+clusterer, encoder = train.build_model(dims, w_ae=1, w_cl=10)
 
 train.train(clusterer, 'cluster', gen['train'], gen['validate'])
 

@@ -56,7 +56,7 @@ def setup_data(*args, **kwargs):
 def build_simple(dims, ks):
     inputs  = Input(shape=dims, name='input')
     opts = {
-            'linear_unclustered' : 0.01,
+            'linear_unclustered' : 0.1,
             'R' : R,
             'etaphi' : True,
            }
@@ -64,7 +64,7 @@ def build_simple(dims, ks):
 
     clusterer = Model(inputs=[inputs], outputs=kmeans)
     #clusterer.compile(optimizer=SGD(lr=20),
-    clusterer.compile(optimizer=Adam(lr=1),
+    clusterer.compile(optimizer=Adam(lr=0.5),
                       loss=min_pred)
 
     print '########### CLUSTERER ############'

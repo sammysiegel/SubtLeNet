@@ -1,8 +1,8 @@
 #!/usr/bin/env python2.7
 
 from _common import *
-from ..generators.gen_new import make_coll, Generator, get_dims
-from ..generators import gen_new as generator
+from ..generators.gen import make_coll, Generator, get_dims
+from ..generators import gen as generator
 from copy import copy, deepcopy
 
 ''' 
@@ -10,7 +10,7 @@ some global definitions
 ''' 
 
 NEPOCH = 50
-VERSION = '4'
+VERSION = '6'
 MODELDIR = environ.get('MODELDIR', 'models/') + '/particles/'
 BASEDIR = environ['BASEDIR']
 OPTIMIZER = 'Adam'
@@ -101,7 +101,8 @@ def build_classifier(dims, last_size=10, l2_penalty=0, l1_penalty=0):
         reg = lambda : L1L2(l1_penalty, l2_penalty)
     else:
         reg = lambda : None
-    reg_opts = lambda : {'bias_regularization' : reg(), 'kernel_regularization' : reg()}
+    # reg_opts = lambda : {'bias_regularizer' : reg(), 'kernel_regularizer' : reg()}
+    reg_opts = lambda : {}
 
     LSTMImplementation = CuDNNLSTM if (utils.get_processor() == 'gpu') else LSTM
 

@@ -3,7 +3,7 @@
 from argparse import ArgumentParser
 parser = ArgumentParser()
 parser.add_argument('--nepoch',type=int,default=50)
-parser.add_argument('--version',type=str,default='4')
+parser.add_argument('--version',type=str,default='6')
 args = parser.parse_args()
 
 import extra_vars

@@ -2,10 +2,10 @@
 
 from argparse import ArgumentParser
 parser = ArgumentParser()
-parser.add_argument('--nepoch',type=int,default=20)
-parser.add_argument('--version',type=str,default='4')
-parser.add_argument('--trunc',type=int,default=7)
-parser.add_argument('--limit',type=int,default=100)
+parser.add_argument('--nepoch',type=int,default=40)
+parser.add_argument('--version',type=str,default='6')
+parser.add_argument('--trunc',type=int,default=4)
+parser.add_argument('--limit',type=int,default=50)
 parser.add_argument('--adv',type=str,default=None)
 parser.add_argument('--train_baseline',action='store_true')
 args = parser.parse_args()
@@ -14,13 +14,18 @@ import extra_vars
 from subtlenet.models import particles as train
 from os import path
 
+from subtlenet import config
+from subtlenet.backend import obj
+# config.DEBUG = True
+# obj._RANDOMIZE = False
+
 train.NEPOCH = args.nepoch
 train.VERSION = str(args.version) + '_Adam'
 #train.OPTIMIZER = 'RMSprop'
 data, dims = train.instantiate(args.trunc, args.limit)
 
 clf_gen = train.setup_data(data)
-adv_gen = train.setup_adv_data(data)
+adv_gen = train.setup_data(data, decorr_mass=True)
 
 
 if args.adv == 'emd':

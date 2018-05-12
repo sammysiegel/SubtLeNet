@@ -54,9 +54,6 @@ class LazyData(object):
 
 
     def __call__(self):
-        if config.DEBUG: 
-            stderr.write('Loading %s\n'%self.fpath)
-            stderr.flush()
         self.data = np.nan_to_num(np.load(self.fpath))
         self.loaded = True 
 
@@ -89,6 +86,9 @@ class _DataObject(object):
             print '_DataObject.load did not load anything!'
             return
         if not dry:
+            if config.DEBUG: 
+                stderr.write('\nLoading %s\n'%fpath)
+                stderr.flush()
             self.data = LazyData(fpath=fpath, lazy=lazy)
             if not lazy:
                 self.n_available = self.data.data.shape[0]
@@ -140,7 +140,9 @@ class _DataCollection(object):
 
         names = categories 
         if ADD_DEFAULTS:
-            names += [self.weight, 'truth']
+            for x in [self.weight, 'truth']:
+                if x not in names:
+                    names.append(x)
         self.fpath = fpath 
         for part in _partitions:
             basefiles = sorted(glob(fpath.replace('CATEGORY',names[0]).replace('PARTITION',part)))
@@ -264,7 +266,7 @@ class _DataCollection(object):
                             print 'We are in batch %i out of %i'%(ib, n_batches)
                             print 'lo=%i, hi=%i, N=%i'%(lo, hi, N)
                             for k,v in sanity_check.iteritems():
-                                print '%s : %i / %i'%(k, v, ldata[k].data.shape[0])
+                                print '%s : %i / %i from %s'%(k, v, ldata[k].data.shape[0], ldata[k].fpath)
                             raise ValueError
                         yield to_yield 
                 else:

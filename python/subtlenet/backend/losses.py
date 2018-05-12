@@ -4,50 +4,57 @@ import tensorflow as tf
 
 
 def min_pred(y_true, y_pred):
-    # simple loss - just return the minimum of y_pred :) 
-    min_ = K.min(y_pred, axis=-1) 
-    return min_ 
+    # simple loss - just return the minimum of y_pred :)
+    min_ = K.min(y_pred, axis=-1)
+    return min_
 
 def min_pred_reg(y_true, y_pred):
-    # simple loss - just return the minimum of y_pred :) 
-    min_ = min_pred(y_true, y_pred) 
+    # simple loss - just return the minimum of y_pred :)
+    min_ = min_pred(y_true, y_pred)
     avg_ = K.sum(y_pred, axis=0) / K.cast(K.shape(y_pred)[0], 'float32')
     var_ = K.var(avg_)
     return min_ + (0.01 * var_)
 
+def huber(y_true, y_pred):
+  diff = y_true - y_pred
+  sq = 0.5 * K.square(diff)
+  lin  = K.abs(diff) - 0.5
+  
+  pwise  = K.abs(diff) < 1
+  return tf.where(pwise, sq, lin)
 
 def _weighted_KL(Q_data, P_data, Q_weight=None, P_weight=None):
     if P_weight is not None:
-        P = K.sum(P_data * P_weight, axis=0) 
+        P = K.sum(P_data * P_weight, axis=0)
     else:
         P = K.sum(P_data, axis=0)
     P = P / K.sum(P, axis=0)
     P = K.clip(P, K.epsilon(), 1)
 
     if Q_weight is not None:
-        Q = K.sum(Q_data * Q_weight, axis=0) 
+        Q = K.sum(Q_data * Q_weight, axis=0)
     else:
         Q = K.sum(Q_data, axis=0)
     Q = Q / K.sum(Q, axis=0)
     Q = K.clip(Q, K.epsilon(), 1)
 
     kl = - K.sum(P * K.log(Q / P), axis=0)
-    return kl 
-    
+    return kl
+
 
 def sculpting_kl_penalty(y_true, y_pred):
     # structure of y_pred[i] : [softmax probab of nuis] + [sample weight] + [tag score]
     # structure of y_true[i] : [one-hot vector of nuis] + [sample weight] + [tag truth]
     weight = y_pred[:,-2:-1] * y_true[:,-1:] # set weight to 0 for things that aren't what we want
     tagged_weight = weight * y_pred[:,-1:] # further modify the weight by the prediction
-    untagged_weight = weight * (1 - y_pred[:,-1:]) 
+    untagged_weight = weight * (1 - y_pred[:,-1:])
 
     loss = _weighted_KL(Q_data = y_pred[:,:-2],
                         P_data = y_true[:,:-2], # in practice Q_data = P_data frequently
                         Q_weight = tagged_weight,
                         P_weight = weight)
     loss += _weighted_KL(Q_data = y_pred[:,:-2],
-                         P_data = y_true[:,:-2], 
+                         P_data = y_true[:,:-2],
                          Q_weight = untagged_weight,
                          P_weight = weight)
     return loss * K.ones_like(weight[:,0]) # make it of dimension (batch_size,)
@@ -101,7 +108,7 @@ class DistCompatibility(object):
         self.__name__ = type(self).__name__ # ??
         self.loss = getattr(type(self), '_' + loss)
     def __call__(self, y_true, y_pred):
-        # structure of y_pred[i] : [tag score] + [class truth] 
+        # structure of y_pred[i] : [tag score] + [class truth]
         # structure of y_true[i] : [sample weight] + [class truth]
         weight = y_true[:,0]
         label = y_true[:,1:]

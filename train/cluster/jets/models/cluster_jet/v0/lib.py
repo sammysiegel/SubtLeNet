@@ -1,6 +1,7 @@
 from _common import *
 from ..generators.gen_auto import make_coll, generate
 from ..generators import gen_auto as generator
+import re
 
 utils.set_processor('cpu')
 
@@ -15,7 +16,9 @@ BASEDIR = environ['BASEDIR']
 _APOSTLE = None
 encoded_size = 4
 
-config.set_gen_variables(['msd','pt','tau3','tau2','tau1','tau3sd','tau2sd','tau1sd'])
+#config.set_gen_variables([x for x in config.gen_singletons if re.match('^[0-9]_[0-9]_[0-9]$', x)])
+#config.set_gen_variables(['msd','pt','tau3','tau2','tau1','tau3sd','tau2sd','tau1sd'])
+config.set_gen_variables(['msd','tau3','tau2','tau1'])
 
 # must be called!
 def instantiate():
@@ -30,7 +33,7 @@ def instantiate():
         fsetup.write('''
 # auto-generated. do not edit!
 from subtlenet import config
-from subtlenet.generators import gen_singletons as generator
+from subtlenet.generators import gen_auto as generator
 config.gen_singletons = %s
 config.gen_default_variables = %s
 config.gen_default_mus = %s
@@ -57,7 +60,7 @@ first build the classifier!
 def setup_data(*args, **kwargs):
     g = {
             'train' : generate(*args, **kwargs),
-            'test' : generate(*args, batch_size=10000, label=True, **kwargs),
+            'test' : generate(*args, batch=100000, label=True, **kwargs),
             'validate' : generate(*args, **kwargs)
         }
     return g

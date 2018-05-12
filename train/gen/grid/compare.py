@@ -12,7 +12,6 @@ import numpy as np
 from subtlenet import config, utils
 from subtlenet.backend import obj 
 from subtlenet.generators.gen import make_coll
-import paths 
 
 n_batches = 500
 partition = 'test'
@@ -20,23 +19,23 @@ partition = 'test'
 p = utils.Plotter()
 r = utils.Roccer()
 
-OUTPUT = paths.figsdir + '/' 
+OUTPUT = environ['FIGSDIR'] + '/' 
 system('mkdir -p %s'%OUTPUT)
 
 components = [
               'singletons',
-              'shallow_nopt', 
-              'trunc4_limit50_best', 
+              'shallow_best', 
+#              'trunc4_limit50_best', 
               'trunc7_limit100_best', 
               ]
 components_gen = [
               'singletons',
-              'shallow_nopt', 
-              'baseline_trunc4_limit50_best', 
-              'trunc7_limit100_best', 
+              'shallow_best', 
+#              'baseline_trunc4_limit50_best', 
+              'baseline_Adam_7_100', 
               ]
 
-basedir = '/data/t3serv014/snarayan/deep/v_deepgen_4_0p02_small/'
+basedir = '/local/snarayan/genarrays/v_deepgen_4_finegrid_small'
 basedir_gen = '/fastscratch/snarayan/genarrays/v_deepgen_4_small/'
 
 
@@ -64,35 +63,37 @@ def div(data, num, den):
 f_vars = {
     'tau32' : (lambda x : div(x, 'tau3', 'tau2'), np.arange(0,1.2,0.01), r'$\tau_{32}$'),
     'tau32sd' : (lambda x : div(x, 'tau3sd', 'tau2sd'), np.arange(0,1.2,0.01), r'$\tau_{32}^\mathrm{sd}$'),
-    'shallow_nopt_roc' : (lambda x : x['shallow_nopt'], np.arange(0,1.2,0.0001), r'Shallow (no $p_{T}$) classifier'),
-    'lstm4_50_roc'  : (lambda x : x['trunc4_limit50_best'], np.arange(0,1.2,0.00001), 'LSTM (4,50)'),
+    'shallow_best_roc' : (lambda x : x['shallow_best'], np.arange(0,1.2,0.0001), r'Shallow (no $p_{T}$) classifier'),
+#    'lstm4_50_roc'  : (lambda x : x['trunc4_limit50_best'], np.arange(0,1.2,0.00001), 'LSTM (4,50)'),
     'lstm7_100_roc'  : (lambda x : x['trunc7_limit100_best'], np.arange(0,1.2,0.00001), 'LSTM (7,100)'),
 }
 
 f_vars_gen = {
-    'gen_shallow_nopt' : (lambda x : x['shallow_nopt'], np.arange(0,1.2,0.01), r'Shallow (no $p_{T}$) classifier'),
-    'gen_shallow_nopt_roc' : (lambda x : x['shallow_nopt'], np.arange(0,1.2,0.0001), r'Shallow (no $p_{T}$) classifier'),
-    'gen_lstm4_50_roc'  : (lambda x : x['baseline_trunc4_limit50_best'], np.arange(0,1.2,0.00001), 'LSTM (4,50)'),
-    'gen_lstm7_100_roc'  : (lambda x : x['trunc7_limit100_best'], np.arange(0,1.2,0.00001), 'LSTM (7,100)'),
+    'gen_shallow_best' : (lambda x : x['shallow_best'], np.arange(0,1.2,0.01), r'Shallow (no $p_{T}$) classifier'),
+    'gen_shallow_best_roc' : (lambda x : x['shallow_best'], np.arange(0,1.2,0.0001), r'Shallow (no $p_{T}$) classifier'),
+#    'gen_lstm4_50_roc'  : (lambda x : x['baseline_trunc4_limit50_best'], np.arange(0,1.2,0.00001), 'LSTM (4,50)'),
+    'gen_lstm7_100_roc'  : (lambda x : x['baseline_Adam_7_100'], np.arange(0,1.2,0.00001), 'LSTM (7,100)'),
 }
 
 roc_vars = {
             'tau32':(r'$\tau_{32}$',0,':'),
             'tau32sd':(r'$\tau_{32}^\mathrm{SD}$',2,':'),
-            'lstm4_50_roc':(r'(4,50) $\delta R=0.02$',5,'--'),
+#            'lstm4_50_roc':(r'(4,50) $\delta R=0.02$',5,'--'),
             'lstm7_100_roc':(r'(7,100) $\delta R=0.02$',3,'--'),
-            'gen_lstm4_50_roc':('(4,50)',5),
+#            'gen_lstm4_50_roc':('(4,50)',5),
             'gen_lstm7_100_roc':('(7,100)',3),
-            'gen_shallow_nopt_roc':('Shallow',9,':'),
+            'gen_shallow_best_roc':('Shallow',9),
+            'shallow_best_roc':('Shallow $\delta R=0.02$',9,'--'),
             }
 
 order = [
         'tau32',
         'tau32sd',
-        'gen_shallow_nopt_roc',
-        'lstm4_50_roc',
+        'shallow_best_roc',
+        'gen_shallow_best_roc',
+#        'lstm4_50_roc',
         'lstm7_100_roc',
-        'gen_lstm4_50_roc',
+#        'gen_lstm4_50_roc',
         'gen_lstm7_100_roc',
         ]
 
