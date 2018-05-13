@@ -6,14 +6,19 @@ from subtlenet.backend.keras_objects import *
 from subtlenet.backend.losses import *
 from tensorflow.python.framework import graph_util, graph_io
 from glob import glob
+import os
+import numpy as np
 
 from subtlenet import utils
-utils.set_processor('cpu')
-
-import os
+# utils.set_processor('cpu')
 
 def _make_parent(path):
     os.system('mkdir -p %s'%('/'.join(path.split('/')[:-1])))
+
+def throw_toy(mu, down, up):
+    sigma = (up - down) / 2
+    return np.random.normal(mu, sigma)
+
 
 class PlotCfg(object):
     def __init__(self, name, binning, fns, weight_fn=None, xlabel=None, ylabel=None):
@@ -26,7 +31,7 @@ class PlotCfg(object):
         self.ylabel = ylabel
     def add_data(self, data):
         weight = self._weight_fn(data) if self._weight_fn is not None else None
-        for fn_name,f in fns.iteritems():
+        for fn_name,f in self._fns.iteritems():
             h = self.hists[fn_name]
             x = f(data)
             h.fill_array(x, weights=weight)
@@ -41,14 +46,19 @@ class Reader(object):
                        'val':(train_frac,train_frac+val_frac),
                        'test':(train_frac+val_frac,1)}
         self.plotter = utils.Plotter()
+    def get_target(self):
+        return self.keys['target']
     def load(self, idx):
-        print self._files[idx],
+        # print self._files[idx],
         f = np.load(self._files[idx])
-        print f['shape']
+        # print f['shape']
         return f
-    def get_shape(self, key):
+    def get_shape(self, key='shape'):
         f = self.load(0)
-        return f[key].shape
+        if key == 'shape':
+            return f[key]
+        else:
+            return f[key].shape
     def _gen(self, p, refresh):
         while True:
             if self._idx[p] == len(self._files):
@@ -76,12 +86,14 @@ class Reader(object):
                 yield r
     def add_coll(self, name, f):
         for idx,fpath in enumerate(self._files):
+            print '%i/%i\r'%(idx, len(self._files)),
             data = dict(self.load(idx))
             data[name] = f(data)
             np.savez(fpath, **data)
+        print
     def plot(self, outpath, cfgs):
         outpath += '/'
-        _make_path(outpath)
+        _make_parent(outpath)
         gen = self._gen('test', refresh=False)
         try:
             while True:
@@ -121,26 +133,31 @@ class RegModel(object):
         h = LeakyReLU(0.2)(h)
         h = self._Dense(h)
         h = LeakyReLU(0.2)(h)
+        h = self._Dense(h, activation='tanh')
         h = self._Dense(h)
-        h = LeakyReLU(0.2)(h)
-        h = self._Dense(h)
-        outputs = [self._Dense(h,1) for _ in xrange(self.n_targets)]
+        outputs = [self._Dense(h,1,'linear') for _ in xrange(self.n_targets)]
 
         self.model = Model(inputs=inputs, outputs=outputs)
         self.model.compile(optimizer=Adam(),
                            loss=losses,
                            loss_weights=loss_weights)
-    def _Dense(self, h, n=-1):
+        self.model.summary()
+    def _Dense(self, h, n=-1, activation='linear'):
         if n < 0:
             n = 2 * self.n_inputs
-        return Dense(n, activation='linear', kernel_initializer='lecun_uniform')(h)
-    def train(self, data, steps_per_epoch=100, epochs=10, validation_steps=10, callbacks=None):
-        self.model.fit_generator(data('train'),
-                                 validation_data=data('val'),
-                                 steps_per_epoch=steps_per_epoch,
-                                 epochs=epochs,
-                                 validation_steps=validation_steps,
-                                 callbacks=callbacks)
+        return Dense(n, activation=activation, kernel_initializer='lecun_uniform')(h)
+    def train(self, data, steps_per_epoch=1000, epochs=10, validation_steps=50, callbacks=None):
+        history = self.model.fit_generator(data('train'),
+                                           validation_data=data('val'),
+                                           steps_per_epoch=steps_per_epoch,
+                                           epochs=epochs,
+                                           validation_steps=validation_steps,
+                                           callbacks=callbacks)
+        with open('history.log','w') as flog:
+            history = history.history
+            flog.write(','.join(history.keys())+'\n')
+            for l in zip(*history.values()):
+                flog.write(','.join([str(x) for x in l])+'\n')
     def save_as_keras(self, path):
         _make_parent(path)
         self.model.save(path)
@@ -154,44 +171,66 @@ class RegModel(object):
         p1 = path.split('/')[-1]
         graph_io.write_graph(graph, p0, p1, as_text=False)
     def predict(self, *args, **kwargs):
-        self.model.predict(*args, **kwargs)
+        return self.model.predict(*args, **kwargs)
 
 
 if __name__ == '__main__':
     from argparse import ArgumentParser
     parser = ArgumentParser()
-    parser.add_arg('--train', action='store_true')
-    parser.add_arg('--plot', action='store_true')
-    parser.add_arg('--version', type=int, default=0)
+    parser.add_argument('--train', action='store_true')
+    parser.add_argument('--plot', action='store_true')
+    parser.add_argument('--version', type=int, default=1)
     args = parser.parse_args()
 
     version = 'v%i'%(args.version)
     reader = Reader('/data/t3serv014/snarayan/deep/v_010_2/*npz',
                     keys={'input':['inputs'],
-                          'target':['jotGenPt/jotPt','jotGenEta','jotGenPhi']})
-    regmodel = RegModel(reader.get_shape('inputs')[1], 3)
+                         'target':[
+                                   'jotGenPt/jotPt',
+                                   'jotGenPt/jotPt', # for each quantile
+                                   'jotGenPt/jotPt',
+                                   # 'jotGenEta',
+                                   # 'TMath::Sin(jotGenPhi)',
+                                   # 'TMath::Cos(jotGenPhi)'
+                                   ]})
     if args.train:
+        regmodel = RegModel(reader.get_shape()[1], len(reader.get_target()),
+                            losses=[huber, QL(0.15), QL(0.85)])
         regmodel.train(reader)
+        reader.add_coll(version, lambda x : regmodel.predict(x['inputs']))
         regmodel.save_as_keras('models/'+version+'/weights.h5')
         regmodel.save_as_tf('models/'+version+'/graph.pb')
-        reader.add_coll(version, lambda x : regmodel.predict(x['inputs']))
     if args.plot:
-        pt = PlotCfg('pt', np.linspace(25, 100, 15),
+        pt_ratio = PlotCfg('pt_ratio', np.linspace(0, 2.5, 25),
+                     {'Truth' : lambda x : x['jotGenPt/jotPt'],
+                      'Corr 0'  : lambda x : x['v0'][0].reshape(-1),
+                      'Corr 1'  : lambda x : throw_toy(x['v1'][0].reshape(-1),
+                                                       x['v1'][1].reshape(-1),
+                                                       x['v1'][2].reshape(-1)),
+                      },
+                     xlabel=r'$p_\mathrm{T}^\mathrm{truth}/p_\mathrm{T}^\mathrm{reco}$',
+                     ylabel='Jets')
+        pt = PlotCfg('pt', np.linspace(0, 200, 50),
                      {'Truth' : lambda x : x['jotGenPt'],
+                      'Corr 0'  : lambda x : x['jotPt'] * x['v0'][0].reshape(-1),
+                      'Corr 1'  : lambda x : x['jotPt'] *
+                                             throw_toy(x['v1'][0].reshape(-1),
+                                                       x['v1'][1].reshape(-1),
+                                                       x['v1'][2].reshape(-1)),
                       'Reco'  : lambda x : x['jotPt'],
-                      'Corr'  : lambda x : x['jotPt'] * x['v0'][0]},
+                      },
                      xlabel=r'$p_\mathrm{T} [GeV]$',
                      ylabel='Jets')
-        eta = PlotCfg('pt', np.linspace(-5, 5, 15),
-                     {'Truth' : lambda x : x['jotGenEta'],
-                      'Reco'  : lambda x : x['jotEta'],
-                      'Corr'  : lambda x : x['v0'][1]},
+        eta = PlotCfg('eta', np.linspace(-2.5, 2.5, 25),
+                     {'Truth' : lambda x : 2.5*x['jotGenEta'],
+                      'Reco'  : lambda x : 2.5*x['jotEta'],
+                      'Corr'  : lambda x : 2.5*x['v0'][1]},
                      xlabel=r'$\eta$',
                      ylabel='Jets')
-        phi = PlotCfg('pt', np.linspace(-5, 5, 15),
-                     {'Truth' : lambda x : x['jotGenPhi'],
-                      'Reco'  : lambda x : x['jotPhi'],
-                      'Corr'  : lambda x : x['v0'][2]},
+        phi = PlotCfg('phi', np.linspace(-3.2, 3.2, 25),
+                     {'Truth' : lambda x : 3.2*x['jotGenPhi'],
+                      'Reco'  : lambda x : 3.2*x['jotPhi'],
+                      'Corr'  : lambda x : np.arctan2(x['v0'][2],x['v0'][3])},
                      xlabel=r'$\phi$',
                      ylabel='Jets')
-        reader.plot('/home/snarayan/public_html/figs/smh/v0/breg/', [pt, eta, phi])
+        reader.plot('/home/snarayan/public_html/figs/smh/v0/breg/', [pt_ratio, pt])

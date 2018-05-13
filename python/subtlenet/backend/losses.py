@@ -2,14 +2,12 @@ import numpy as np
 import keras.backend as K
 import tensorflow as tf
 
-
 def min_pred(y_true, y_pred):
     # simple loss - just return the minimum of y_pred :)
     min_ = K.min(y_pred, axis=-1)
     return min_
 
 def min_pred_reg(y_true, y_pred):
-    # simple loss - just return the minimum of y_pred :)
     min_ = min_pred(y_true, y_pred)
     avg_ = K.sum(y_pred, axis=0) / K.cast(K.shape(y_pred)[0], 'float32')
     var_ = K.var(avg_)
@@ -19,9 +17,17 @@ def huber(y_true, y_pred):
   diff = y_true - y_pred
   sq = 0.5 * K.square(diff)
   lin  = K.abs(diff) - 0.5
-  
   pwise  = K.abs(diff) < 1
   return tf.where(pwise, sq, lin)
+
+class QL(object):
+    def __init__(self, q):
+        self._q = q
+        self.__name__ = 'QL'
+    def __call__(self, y_true, y_pred):
+        diff = y_true - y_pred
+        theta = tf.where(diff < 0, K.ones_like(diff), K.zeros_like(diff))
+        return diff * (self._q - theta)
 
 def _weighted_KL(Q_data, P_data, Q_weight=None, P_weight=None):
     if P_weight is not None:
