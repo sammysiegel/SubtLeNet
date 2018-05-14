@@ -8,17 +8,37 @@ from tensorflow.python.framework import graph_util, graph_io
 from glob import glob
 import os
 import numpy as np
+from collections import namedtuple
+from sys import stdout
 
 from subtlenet import utils
-# utils.set_processor('cpu')
+utils.set_processor('cpu')
 
 def _make_parent(path):
     os.system('mkdir -p %s'%('/'.join(path.split('/')[:-1])))
 
 def throw_toy(mu, down, up):
-    sigma = (up - down) / 2
+    sigma = np.abs(up - down) / 2
     return np.random.normal(mu, sigma)
 
+def sqr(x):
+    return np.square(x)
+
+Vec = namedtuple('Vec', ['x','y','z','t'])
+def convert4(pt, eta, phi, m):
+    x = pt * np.cos(phi)
+    y = pt * np.sin(phi)
+    z = pt * np.sinh(eta)
+    t = np.sqrt(sqr(pt * np.cosh(eta)) + sqr(m))
+    return Vec(x,y,z,t)
+
+def mjj(pt0, eta0, phi0, m0, pt1, eta1, phi1, m1):
+    v0 = convert4(pt0, eta0, phi0, m0)
+    v1 = convert4(pt1, eta1, phi1, m1)
+    return np.sqrt(sqr(v0.t + v1.t)
+                   - sqr(v0.x + v1.x)
+                   - sqr(v0.y + v1.y)
+                   - sqr(v0.z + v1.z))
 
 class PlotCfg(object):
     def __init__(self, name, binning, fns, weight_fn=None, xlabel=None, ylabel=None):
@@ -86,12 +106,12 @@ class Reader(object):
                 yield r
     def add_coll(self, name, f):
         for idx,fpath in enumerate(self._files):
-            print '%i/%i\r'%(idx, len(self._files)),
+            stdout.write('%i/%i\r'%(idx, len(self._files))); stdout.flush()
             data = dict(self.load(idx))
             data[name] = f(data)
             np.savez(fpath, **data)
         print
-    def plot(self, outpath, cfgs):
+    def plot(self, outpath, cfgs, order=None):
         outpath += '/'
         _make_parent(outpath)
         gen = self._gen('test', refresh=False)
@@ -104,8 +124,12 @@ class Reader(object):
             pass
         for cfg in cfgs:
             self.plotter.clear()
-            for i,(label,h) in enumerate(cfg.hists.iteritems()):
-                self.plotter.add_hist(h, label, i)
+            if order is None:
+                order = cfg.hists.keys()
+            for i,label in enumerate(order):
+                if label not in cfg.hists:
+                    continue
+                self.plotter.add_hist(cfg.hists[label], label, i)
             self.plotter.plot(xlabel=cfg.xlabel,
                               ylabel=cfg.ylabel,
                               output=outpath+'/'+cfg.name)
@@ -175,62 +199,157 @@ class RegModel(object):
 
 
 if __name__ == '__main__':
+    datadir = '/fastscratch/snarayan/breg/v_010_2/'
+    figsdir = '/home/snarayan/public_html/figs/smh/v2/quantiles/breg/'
     from argparse import ArgumentParser
     parser = ArgumentParser()
     parser.add_argument('--train', action='store_true')
     parser.add_argument('--plot', action='store_true')
-    parser.add_argument('--version', type=int, default=1)
+    parser.add_argument('--version', type=int, default=2)
+    parser.add_argument('--quantiles', action='store_true')
+    parser.add_argument('--inputs', type=str, default='inputs')
     args = parser.parse_args()
 
+    inputs = args.inputs
+    target = ['jotGenPt/jotPt']
+    losses = [huber]
     version = 'v%i'%(args.version)
-    reader = Reader('/data/t3serv014/snarayan/deep/v_010_2/*npz',
-                    keys={'input':['inputs'],
-                         'target':[
-                                   'jotGenPt/jotPt',
-                                   'jotGenPt/jotPt', # for each quantile
-                                   'jotGenPt/jotPt',
-                                   # 'jotGenEta',
-                                   # 'TMath::Sin(jotGenPhi)',
-                                   # 'TMath::Cos(jotGenPhi)'
-                                   ]})
+    if args.quantiles:
+        target += ['jotGenPt/jotPt', 'jotGenPt/jotPt']
+        losses += [QL(0.15), QL(0.85)]
+        version += '/quantiles'
+    else:
+        version += '/means'
+    target += ['jotGenDEta', 'jotGenDPhi']
+    losses += [huber, huber]
+    version += inputs.replace('inputs','')
+    reader = Reader(datadir+'/T*npz',
+                    keys={'input':[inputs],
+                         'target':target})
+    reader_h = Reader(datadir+'*Z*npz', keys={})
+    reader_w = Reader(datadir+'W*npz', keys={})
     if args.train:
-        regmodel = RegModel(reader.get_shape()[1], len(reader.get_target()),
-                            losses=[huber, QL(0.15), QL(0.85)])
+        if args.quantiles:
+            regmodel = RegModel(reader.get_shape()[1], len(reader.get_target()),
+                                losses=losses)
+        else:
+            regmodel = RegModel(reader.get_shape()[1], len(reader.get_target()),
+                                losses=losses)
         regmodel.train(reader)
-        reader.add_coll(version, lambda x : regmodel.predict(x['inputs']))
         regmodel.save_as_keras('models/'+version+'/weights.h5')
         regmodel.save_as_tf('models/'+version+'/graph.pb')
+
+        reader.add_coll(version, lambda x : regmodel.predict(x[inputs]))
+        reader_h.add_coll(version+'_hbb0', lambda x : regmodel.predict(x[inputs+'_hbb0']))
+        reader_h.add_coll(version+'_hbb1', lambda x : regmodel.predict(x[inputs+'_hbb1']))
+        reader_w.add_coll(version+'_hbb0', lambda x : regmodel.predict(x[inputs+'_hbb0']))
+        reader_w.add_coll(version+'_hbb1', lambda x : regmodel.predict(x[inputs+'_hbb1']))
+
     if args.plot:
-        pt_ratio = PlotCfg('pt_ratio', np.linspace(0, 2.5, 25),
+        def pt_throw_toy(x, key='v2/quantiles'):
+            return throw_toy(x[key][0].reshape(-1),
+                             x[key][1].reshape(-1),
+                             x[key][2].reshape(-1))
+        pt_ratio = PlotCfg('pt_ratio', np.linspace(0, 2.5, 50),
                      {'Truth' : lambda x : x['jotGenPt/jotPt'],
-                      'Corr 0'  : lambda x : x['v0'][0].reshape(-1),
-                      'Corr 1'  : lambda x : throw_toy(x['v1'][0].reshape(-1),
-                                                       x['v1'][1].reshape(-1),
-                                                       x['v1'][2].reshape(-1)),
+                      'Mean'  : lambda x : x['v2/means'][0].reshape(-1),
+                      'Norm'  : pt_throw_toy,
+                      r'Norm $\Delta R$'  : lambda x : pt_throw_toy(x, 'v2/quantiles_dr'),
                       },
                      xlabel=r'$p_\mathrm{T}^\mathrm{truth}/p_\mathrm{T}^\mathrm{reco}$',
                      ylabel='Jets')
         pt = PlotCfg('pt', np.linspace(0, 200, 50),
                      {'Truth' : lambda x : x['jotGenPt'],
-                      'Corr 0'  : lambda x : x['jotPt'] * x['v0'][0].reshape(-1),
-                      'Corr 1'  : lambda x : x['jotPt'] *
-                                             throw_toy(x['v1'][0].reshape(-1),
-                                                       x['v1'][1].reshape(-1),
-                                                       x['v1'][2].reshape(-1)),
+                      'Mean'  : lambda x : x['jotPt'] * x['v2/means'][0].reshape(-1),
+                      'Norm'  : lambda x : x['jotPt'] * pt_throw_toy(x),
+                      r'Norm $\Delta R$'  : lambda x : x['jotPt'] *
+                                                       pt_throw_toy(x, 'v2/quantiles_dr'),
                       'Reco'  : lambda x : x['jotPt'],
                       },
-                     xlabel=r'$p_\mathrm{T} [GeV]$',
+                     xlabel=r'$p_\mathrm{T}$ [GeV]',
                      ylabel='Jets')
-        eta = PlotCfg('eta', np.linspace(-2.5, 2.5, 25),
-                     {'Truth' : lambda x : 2.5*x['jotGenEta'],
-                      'Reco'  : lambda x : 2.5*x['jotEta'],
-                      'Corr'  : lambda x : 2.5*x['v0'][1]},
-                     xlabel=r'$\eta$',
+        error = PlotCfg('error', np.linspace(0, 2.5, 50),
+                     {'Truth' : lambda x : np.zeros(x['shape'][0] / 5),
+                      'Mean'  : lambda x : np.abs(x['v2/means'][0].reshape(-1) - x['jotGenPt/jotPt']),
+                      'Norm'  : lambda x : np.abs(pt_throw_toy(x) - x['jotGenPt/jotPt']),
+                      r'Norm $\Delta R$'  : lambda x : np.abs(
+                                                        x['jotPt'] *
+                                                        pt_throw_toy(x, 'v2/quantiles_dr')
+                                                       ),
+                      },
+                     xlabel=r'$|y-\hat{y}|$',
                      ylabel='Jets')
-        phi = PlotCfg('phi', np.linspace(-3.2, 3.2, 25),
-                     {'Truth' : lambda x : 3.2*x['jotGenPhi'],
-                      'Reco'  : lambda x : 3.2*x['jotPhi'],
-                      'Corr'  : lambda x : np.arctan2(x['v0'][2],x['v0'][3])},
-                     xlabel=r'$\phi$',
+        normerror = PlotCfg('normerror', np.linspace(0, 2.5, 50),
+                     {'Truth' : lambda x : np.zeros(x['shape'][0] / 5),
+                      'Mean'  : lambda x : np.abs(x['v2/means'][0].reshape(-1) - x['jotGenPt/jotPt']),
+                      'Norm'  : lambda x : np.divide(
+                                        np.abs(pt_throw_toy(x) - x['jotGenPt/jotPt']),
+                                        (x['v2/quantiles'][2].reshape(-1) - x['v2/quantiles'][1].reshape(-1))
+                                    ),
+                      r'Norm $\Delta R$'  : lambda x : np.divide(
+                                        np.abs(pt_throw_toy(x, 'v2/quantiles_dr') -
+                                                 x['jotGenPt/jotPt']),
+                                        (x['v2/quantiles_dr'][2].reshape(-1) - x['v2/quantiles_dr'][1].reshape(-1))
+                                    ),
+                      },
+                     xlabel=r'$|y-\hat{y}| / (q_{0.85}-q_{0.15})$',
                      ylabel='Jets')
-        reader.plot('/home/snarayan/public_html/figs/smh/v0/breg/', [pt_ratio, pt])
+        reader.plot(figsdir,
+                    [normerror, error, pt_ratio, pt],
+                    order = ['Truth', 'Reco', 'Mean', 'Norm'])
+
+        def get_hbbm(x, scales=[1,1]):
+            args = []
+            for i in [0,1]:
+                pt = x['jotPt[hbbjtidx[%i]]'%i] * scales[i]
+                m = x['jotM[hbbjtidx[%i]]'%i] * scales[i]
+                eta = x['jotEta[hbbjtidx[%i]]'%i]
+                phi = x['jotPhi[hbbjtidx[%i]]'%i]
+                args.extend([pt,eta,phi,m])
+            return mjj(*[x.astype(float) for x in args])
+
+        def get_genhbbm(x):
+            args = []
+            for i in [0,1]:
+                pt = x['jotGenPt[hbbjtidx[%i]]'%i]
+                m = x['jotGenM[hbbjtidx[%i]]'%i]
+                eta = 2.5*x['jotGenEta[hbbjtidx[%i]]'%i]
+                phi = 3.2*x['jotGenPhi[hbbjtidx[%i]]'%i]
+                args.extend([pt,eta,phi,m])
+            return mjj(*[x.astype(float) for x in args])
+
+        hbbm = PlotCfg('hbbm', np.linspace(0, 200, 50),
+                       {
+                          'Truth' : lambda x : get_genhbbm(x),
+                          'Reco' : lambda x : get_hbbm(x),
+                          'Mean' : lambda x : get_hbbm(x, [x['v2/means_hbb0'][0].reshape(-1),
+                                                           x['v2/means_hbb1'][0].reshape(-1)]),
+                          'Norm' : lambda x : get_hbbm(x, [pt_throw_toy(x, 'v2/quantiles_hbb0'),
+                                                           pt_throw_toy(x, 'v2/quantiles_hbb1')]),
+                          r'Norm $\Delta R$' : lambda x : get_hbbm(x,
+                                                             [pt_throw_toy(x, 'v2/quantiles_hbb0'),
+                                                           pt_throw_toy(x, 'v2/quantiles_hbb1')])
+                       },
+                      xlabel=r'$m_H$ [GeV]', ylabel='Events')
+        pt_ratio = PlotCfg('pt_ratio_hbb0', np.linspace(0, 2.5, 50),
+                     {'Truth' : lambda x : x['jotGenPt[hbbjtidx[0]]/jotPt[hbbjtidx[0]]'],
+                      'Mean'  : lambda x : x['v2/means_hbb0'][0].reshape(-1),
+                      'Norm'  : lambda x : pt_throw_toy(x, 'v2/quantiles_hbb0'),
+                      },
+                     xlabel=r'$p_\mathrm{T}^\mathrm{truth}/p_\mathrm{T}^\mathrm{reco}$',
+                     ylabel='Jets')
+        pt = PlotCfg('pt_hbb0', np.linspace(0, 200, 50),
+                     {'Truth' : lambda x : x['jotGenPt[hbbjtidx[0]]'],
+                      'Mean'  : lambda x : x['jotPt[hbbjtidx[0]]'] * x['v2/means_hbb0'][0].reshape(-1),
+                      'Norm'  : lambda x : x['jotPt[hbbjtidx[0]]']
+                                            * pt_throw_toy(x, 'v2/quantiles_hbb0'),
+                      'Reco'  : lambda x : x['jotPt[hbbjtidx[0]]'],
+                      },
+                     xlabel=r'$p_\mathrm{T}$ [GeV]',
+                     ylabel='Jets')
+        reader_h.plot(figsdir,
+                      [pt, pt_ratio, hbbm], order = ['Truth', 'Reco', 'Mean', 'Norm'])
+        for cfg in [pt, pt_ratio, hbbm]:
+            cfg.name += '_bkg'
+        reader_w.plot(figsdir,
+                      [pt, pt_ratio, hbbm], order = ['Truth', 'Reco', 'Mean', 'Norm'])
