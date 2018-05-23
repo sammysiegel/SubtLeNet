@@ -8,5 +8,9 @@ from keras.regularizers import L1L2
 
 import keras.backend as K
 
+from keras.losses import categorical_crossentropy, mse
+
+from keras.utils import np_utils
+
 def AMSgrad(*args, **kwargs):
     return Adam(*args, amsgrad=True, **kwargs)

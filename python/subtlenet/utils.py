@@ -34,6 +34,16 @@ def get_processor():
         return 'gpu'
 
 
+## freeze layers of an NN
+def freeze(model, on=False, to_skip = []):
+    def _act(l,o):
+#        print ('un-frozen' if o else 'frozen')
+        l.trainable = o
+    for l in model.layers:
+#        print l.name ,
+        _act(l, on == (l not in to_skip))
+
+
 ## general layout                                                                                                                      
 seaborn.set(style="ticks")
 seaborn.set_context("poster")
@@ -80,6 +90,9 @@ class NH1(object):
         self._content[ix] = val
     def set_error(self, ix, val):
         self._sumw2[ix] = val * val;
+    def clear(self):
+        self._content *= 0
+        self._sumw2 *= 0
     def fill(self, x, y=1):
         ix = self.find_bin(x)
         self._content[ix] += y
