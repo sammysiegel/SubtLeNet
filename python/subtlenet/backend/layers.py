@@ -42,7 +42,7 @@ class KMeans(Layer):
         if 'input_shape' not in kwargs and 'input_dim' in kwargs:
             kwargs['input_shape'] = (kwargs.pop('input_dim'),)
         super(KMeans, self).__init__(**kwargs)
-        self.k = k 
+        self.k = k
         self.R0 = R
         self.kernel_initializer = initializers.get(kernel_initializer)
         self.kernel_regularizer = regularizers.get(kernel_regularizer)
@@ -67,10 +67,10 @@ class KMeans(Layer):
 
     def call(self, inputs):
         # (batch_size, input_dim, newaxis) - (1, input_dim, k) = (batch_size, input_dim, k)
-        diff = K.expand_dims(inputs) - self.centers 
+        diff = K.expand_dims(inputs) - self.centers
         if self.etaphi:
             diff = detaphi_map(diff) / self.R0
-        d = K.square(diff) 
+        d = K.square(diff)
         R = K.sum(d, axis=1) # sum over input_dim axis -> (batch_size, k)
         if self.flat_unclustered:
             ones = K.expand_dims(K.ones_like(inputs[:,0])) # (batch_size,1)
@@ -91,8 +91,8 @@ class KMeans(Layer):
         assert input_shape[1]
         output_shape = list(input_shape)
         if self.flat_unclustered:
-            output_shape[1] = self.k + 1 
-        else: 
+            output_shape[1] = self.k + 1
+        else:
             output_shape[1] = self.k
         return tuple(output_shape)
 
@@ -248,18 +248,18 @@ class LorentzInnerCell(Layer):
             the linear transformation of the recurrent state.
     """
 
-    def __init__(self, 
+    def __init__(self,
                  activation='linear',
                  dropout=0.,
                  recurrent_dropout=0.,
                  **kwargs):
         super(LorentzInnerCell, self).__init__(**kwargs)
-        self.units = 2 
+        self.units = 2
         self.activation = activations.get(activation)
 
         self.dropout = min(1., max(0., dropout))
         self.recurrent_dropout = min(1., max(0., recurrent_dropout))
-        self.state_size = (2, 4) # 4-vector 
+        self.state_size = (2, 4) # 4-vector
         self._dropout_mask = None
         self._recurrent_dropout_mask = None
 
@@ -271,10 +271,10 @@ class LorentzInnerCell(Layer):
         vec0 = states[1]
         vec1 = inputs
         N = K.shape(vec0)[0]
-        
+
         ip = _inner_product(vec0, vec1)
 
-        diff = vec0 - vec1 
+        diff = vec0 - vec1
         d01 = _inner_product(diff, diff)
 
         output = self.activation(K.stack([ip, d01], axis=1))
@@ -395,18 +395,18 @@ class LorentzOuterCell(Layer):
             the linear transformation of the recurrent state.
     """
 
-    def __init__(self, 
+    def __init__(self,
                  activation='linear',
                  dropout=0.,
                  recurrent_dropout=0.,
                  **kwargs):
         super(LorentzOuterCell, self).__init__(**kwargs)
-        self.units = 16 
+        self.units = 16
         self.activation = activations.get(activation)
 
         self.dropout = min(1., max(0., dropout))
         self.recurrent_dropout = min(1., max(0., recurrent_dropout))
-        self.state_size = (16,4) # 4-vector 
+        self.state_size = (16,4) # 4-vector
         self._dropout_mask = None
         self._recurrent_dropout_mask = None
 
@@ -417,7 +417,7 @@ class LorentzOuterCell(Layer):
     def call(self, inputs, states, training=None):
         vec0 = states[1]
         vec1 = inputs
-        
+
         N = K.shape(vec0)[0]
         op = K.reshape(vec0[:,:,np.newaxis] *
                        vec1[:,np.newaxis,:],
@@ -524,47 +524,157 @@ class LorentzOuter(RNN):
         return cls(**config)
 
 
-# polynomial layer - currently unused
 class PolyLayer(Layer):
-    def __init__(self, output_dim, **kwargs):
-        self.order = output_dim
-        self.output_dim = output_dim
+    def __init__(self, order, init=None, return_coeffs=False, alpha=0.01, **kwargs):
+        self.return_coeffs = return_coeffs
+        self.order = order
+        self.output_dim = order + 1
+        self.alpha = alpha
+        self._init = init
+        self._norm = K.constant([[1./x] for x in range(1,order+2)])
+        print K.eval(self._norm)
         super(PolyLayer, self).__init__(**kwargs)
 
+    @property
+    def coeffs(self):
+        return K.eval(self.kernel)
+    @property
+    def integral(self):
+        return K.eval(self._integral)
     def build(self, input_shape):
-        self.kernel = self.add_weight(name='kernel', 
+        self.kernel = self.add_weight(name='kernel',
                                       shape=(self.order + 1, 1),
                                       initializer='uniform',
                                       trainable=True)
-        super(PolyLayer, self).build(input_shape)  
+        if self._init is not None:
+            self._init = [[x] for x in self._init]
+            K.set_value(self.kernel, self._init)
+        super(PolyLayer, self).build(input_shape)
 
     def call(self, x):
-        basis = K.concatenate([K.pow(x, i) for i in xrange(self.order + 1)])
-        return K.dot(basis, self.kernel)
+        basis = K.concatenate([K.pow(x, i) for i in xrange(self.order + 1)]) # basis vector
+        self._integral = K.sum(self.kernel * self._norm) # normalize the integral
+        #self._norm = tf.Print(self._norm, [self._norm])
+        #self._integral = tf.Print(self._integral, [self._integral])
+        mask = K.abs(x - 0.5) <= 0.5 # between 0 and 1
+        # likelihood
+        l = tf.where(mask,
+                     K.dot(basis, self.kernel) / self._integral,
+                     -(self.alpha*K.abs(x-0.5) - self.alpha*0.5))
+        penalty = K.zeros_like(l) + K.square(1 - self._integral) + K.epsilon()
+        loss = -l + 100*penalty
+        if self.return_coeffs:
+            coeffs = K.transpose(K.repeat_elements(self.kernel, rep=K.shape(x)[0], axis=1))
+            return K.concatenate([loss, coeffs])
+        else:
+            return loss
 
     def compute_output_shape(self, input_shape):
-        return (input_shape[0], 1)
+        if self.return_coeffs:
+            return (input_shape[0], self.order + 2)
+        else:
+            return (input_shape[0], 1)
+
+def choose(n, k):
+    return np.math.factorial(n) / (np.math.factorial(k) * np.math.factorial(n - k))
+
+
+class ConvexPolyLayer(Layer):
+    def __init__(self, order, init=None, return_coeffs=False, alpha=0.0, **kwargs):
+        super(ConvexPolyLayer, self).__init__(**kwargs)
+        self.return_coeffs = return_coeffs
+        self.order = order
+        self.output_dim = order + 1
+        self.alpha = alpha
+        self._init = init
+        vals = [[0 for _ in self.powers] for __ in self.powers]
+        for a in self.powers:
+            for b in self.powers:
+                for k in xrange(b+1):
+                    print a, b, k
+                    vals[a][b] += (np.power(-1, k) * choose(b, k) * 1. / (a + k + 1))
+        self._norm = K.constant(vals)
+        print K.eval(self._norm)
+
+    @property
+    def powers(self):
+        return xrange(self.order + 1)
+
+    @property
+    def coeffs(self):
+        return K.eval(self.kernel)
+
+    @property
+    def poly_coeffs(self):
+        base = self.coeffs
+        cs = {x:0 for x in xrange(self.order * 2 + 1)}
+        for a in self.powers:
+            for b in self.powers:
+                c = base[a, b]
+                for k in xrange(b+1):
+                    cs[a + k] += c * np.power(-1, k) * choose(b, k)
+        return [[cs[x]] for x in xrange(self.order * 2 + 1)]
+
+    @property
+    def integral(self):
+        return K.eval(self._integral)
+
+    def build(self, input_shape):
+        self.kernel = self.add_weight(name='kernel',
+                                      shape=(self.order + 1, self.order + 1),
+                                      initializer='uniform',
+                                      trainable=True)
+        if self._init is not None:
+            self._init = [[x] for x in self._init]
+            K.set_value(self.kernel, self._init)
+        super(ConvexPolyLayer, self).build(input_shape)
+
+    def call(self, x):
+        basis0 = K.expand_dims(K.concatenate([K.pow(x, i) for i in self.powers]))
+        one = K.ones_like(x)
+        basis1 = K.expand_dims(K.concatenate([K.pow(one - x, i) for i in self.powers]))
+        basis = K.batch_dot(basis0, basis1, axes=2)
+        self._integral = K.sum(self.kernel * self._norm) # normalize the integral
+        prob = K.expand_dims(K.sum(K.sum(basis * self.kernel, axis=1), axis=1) / self._integral)
+        mask = K.abs(x - 0.5) <= 0.5 # between 0 and 1
+        # likelihood
+        print K.int_shape(prob), K.int_shape(mask), K.int_shape((self.alpha * (K.abs(x-0.5) - 0.5)))
+        l = tf.where(mask, -K.log(prob),
+                     self.alpha * (K.abs(x-0.5) - 0.5))
+        l += K.sum(K.relu(-self.kernel)) / K.max(K.abs(self.kernel)) # kernel coeffs should always be positiv
+        if self.return_coeffs:
+            coeffs = K.transpose(K.repeat_elements(self.kernel, rep=K.shape(x)[0], axis=1))
+            return K.concatenate([l, coeffs])
+        else:
+            return l
+
+    def compute_output_shape(self, input_shape):
+        if self.return_coeffs:
+            return (input_shape[0], self.order + 2)
+        else:
+            return (input_shape[0], 1)
+
 
 
 # https://github.com/michetonu/gradient_reversal_keras_tf/blob/master/flipGradientTF.py
 def _reverse(x, scale = 1):
     # first make this available to tensorflow
     if hasattr(_reverse, 'N'):
-        _reverse.N += 1 
+        _reverse.N += 1
     else:
         _reverse.N = 1
-    name = 'reverse%i'%_reverse.N 
+    name = 'reverse%i'%_reverse.N
 
     @tf.RegisterGradient(name)
     def f(op, g):
         # this is the actual tensorflow op
         return [scale * tf.negative(g)]
 
-    graph = K.get_session().graph 
+    graph = K.get_session().graph
     with graph.gradient_override_map({'Identity':name}):
         ret = tf.identity(x)
 
-    return ret 
+    return ret
 
 class GradReverseLayer(Layer):
     def __init__(self, scale = 1, **kwargs):
@@ -573,7 +683,7 @@ class GradReverseLayer(Layer):
 
     def build(self, input_shape):
         self.trainable_weights = []
-        super(GradReverseLayer, self).build(input_shape)  
+        super(GradReverseLayer, self).build(input_shape)
 
     def call(self, x):
         return _reverse(x, self.scale)
@@ -589,10 +699,10 @@ class GradReverseLayer(Layer):
 
 class Adversary(object):
     def __init__(self, n_output_bins, n_outputs=1, scale=1):
-        self.scale = scale 
+        self.scale = scale
         self.n_output_bins = n_output_bins
-        self.n_outputs = n_outputs 
-        self._outputs = None 
+        self.n_outputs = n_outputs
+        self._outputs = None
         self._dense = []
 
     def __call__(self, inputs):
@@ -605,14 +715,14 @@ class Adversary(object):
         self._dense.append( [Dense(10, activation='tanh')(d) for d in self._dense[-1]] )
         if self.n_output_bins > 1:
             if n_outputs == 1:
-                self._outputs = [Dense(self.n_output_bins, activation='softmax', name='adv')(d) 
+                self._outputs = [Dense(self.n_output_bins, activation='softmax', name='adv')(d)
                                  for d in self._dense[-1]]
             else:
-                self._outputs = [Dense(self.n_output_bins, activation='softmax', name='adv%i'%i)(d) 
+                self._outputs = [Dense(self.n_output_bins, activation='softmax', name='adv%i'%i)(d)
                                  for i,d in enumerate(self._dense[-1])]
         else:
             if n_outputs == 1:
                 self._outputs = [Dense(1, activation='linear', name='adv')(d) for d in self._dense[-1]]
             else:
                 self._outputs = [Dense(1, activation='linear', name='adv%i'%i)(d) for i,d in enumerate(self._dense[-1])]
-        return self._outputs 
+        return self._outputs

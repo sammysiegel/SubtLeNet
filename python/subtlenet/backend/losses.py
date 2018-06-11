@@ -13,6 +13,13 @@ def min_pred_reg(y_true, y_pred):
     var_ = K.var(avg_)
     return min_ + (0.01 * var_)
 
+def nlog_loss(y_true, y_pred):
+  return -K.log(y_pred)
+
+def pred_loss(y_true, y_pred):
+  return y_pred
+
+
 def huber(y_true, y_pred):
   diff = y_true - y_pred
   sq = 0.5 * K.square(diff)
