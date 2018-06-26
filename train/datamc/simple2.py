@@ -1,18 +1,14 @@
-# uncompyle6 version 3.2.3
-# Python bytecode 2.7 (62211)
-# Decompiled from: Python 2.7.13 (default, Jan  6 2017, 15:34:14) 
-# [GCC 4.4.7 20120313 (Red Hat 4.4.7-17)]
-# Embedded file name: simple2.py
-# Compiled at: 2018-06-23 13:59:03
 from keras.models import Model, load_model
 from keras.callbacks import ModelCheckpoint
 from subtlenet.backend.keras_objects import *
 from subtlenet.backend.losses import *
 from subtlenet.backend.layers import *
+
 import os, numpy as np
 from sys import stdout
 from tqdm import tqdm
 from subtlenet import utils
+
 utils.set_processor('cpu')
 sqr = np.square
 D = 5
@@ -25,9 +21,8 @@ def _make_parent(path):
 
 
 class PlotCfg(object):
-
-    def __init__(self, name, binning, fn, classes=[
- 0, 1], weight_fn=None, cut_fn=None, xlabel=None, ylabel=None):
+    def __init__(self, name, binning, fn, classes=[0, 1], 
+                 weight_fn=None, cut_fn=None, xlabel=None, ylabel=None):
         self._fn = fn
         self._weight_fn = weight_fn
         self._cut_fn = cut_fn
@@ -45,12 +40,11 @@ class PlotCfg(object):
     def add_data(self, data):
         x = self._fn(data)
         weight = self._weight_fn(data) if self._weight_fn is not None else None
-        cut = self._cut_fn(data) if self._cut_fn is not None else np.ones(x.shape[0]).astype(bool)
+        cut    = self._cut_fn(data)    if self._cut_fn is not None    else np.ones(x.shape[0]).astype(bool)
         for c in self.classes:
             mask = np.logical_and(cut, data[1] == c)
-            if weight is not None:
-                w = weight[mask] if 1 else None
-                self.hists[c].fill_array(x[mask], weights=w)
+            w = weight[mask] if weight is not None else None
+            self.hists[c].fill_array(x[mask], weights=w)
 
         return
 
@@ -61,6 +55,7 @@ class Data(object):
     YIDX = 2
     WIDX = 3
     MIDX = 4
+    UIDX = 5
 
     def __init__(self, n_input=2, n_output=1):
         self.n_input = n_input
@@ -88,8 +83,7 @@ class Data(object):
         else:
             w_masked = 1 - y
         idx = np.random.permutation(y.shape[0])
-        return (
-         x[idx], z[idx], y[idx], w[idx], w_masked[idx])
+        return x[idx], z[idx], y[idx], w[idx], w_masked[idx], np.random.uniform(y.shape[0])
 
     def plot(self, outpath, cfgs, N, order=None, scale=True):
         outpath += '/'
@@ -121,28 +115,34 @@ class DModel(object):
         losses = [categorical_crossentropy]
         losses += [pred_loss] * 2
         losses += [kernel_loss]
+
         X = Input(shape=(n_inputs,), name='X')
         h = Dense(2 * n_inputs, activation='tanh', kernel_initializer='lecun_uniform')(X)
         h = Dense(2 * n_inputs, activation='relu', kernel_initializer='lecun_uniform')(h)
         h = Dense(n_inputs, activation='relu', kernel_initializer='lecun_uniform')(h)
         h = Dense(n_inputs, activation='relu', kernel_initializer='lecun_uniform')(h)
         Y = Dense(2, activation='softmax', kernel_initializer='lecun_uniform', name='Y')(h)
-        p0 = ConvexPolyLayer(D, alpha=0)
-        p1 = ConvexPolyLayer(D, alpha=0)
+
+        p0 = ConvexPolyLayer(D, alpha=0, name='poly0')
+        p1 = ConvexPolyLayer(D, alpha=0, name='poly1')
+
         Z = Input(shape=(1, ), name='Z')
         Q0 = p0(Z, return_coeffs=False)
         K0 = p0(Z, return_coeffs=True)
+
         P1 = p1(Z, return_coeffs=False)
         prob1 = Lambda(lambda x: x[:, 1])(Y)
         Q1 = multiply([prob1, P1])
         K1 = p1(Z, return_coeffs=True)
         K = concatenate([K0, K1], axis=0)
-        self.model = Model(inputs=[X, Z], outputs=[
-         Y, Q0, Q1, K])
-        self.model.compile(loss=losses, loss_weights=[
-         1, 100 * penalty, 100 * penalty, penalty], optimizer=Adam())
-        self.D = Model(inputs=[X], outputs=[Y])
-        self.D.compile(loss=[losses[0]], optimizer=Adam())
+
+        # self.model = Model(inputs=[X, Z], outputs=[Y, Q0, Q1, K])
+        # self.model.compile(loss=losses, 
+        #                    loss_weights=[1, 100 * penalty, 100 * penalty, penalty], 
+        #                    optimizer=Adam())
+        self.model = Model(inputs=[Z], outputs=[Q0])
+        self.model.compile(loss=losses[1:2], 
+                           optimizer=Adam())
         DModel._sum('model', self.model)
 
     @staticmethod
@@ -174,7 +174,9 @@ class DModel(object):
         _make_parent(path)
         sess = K.get_session()
         print [ l.op.name for l in self.DAs.inputs ], '->', [ l.op.name for l in self.DAs.outputs ]
-        graph = graph_util.convert_variables_to_constants(sess, sess.graph.as_graph_def(), [ n.op.name for n in self.DAs.outputs ])
+        graph = graph_util.convert_variables_to_constants(sess, 
+                                                          sess.graph.as_graph_def(), 
+                                                          [ n.op.name for n in self.DAs.outputs ])
         p0 = ('/').join(path.split('/')[:-1])
         p1 = path.split('/')[-1]
         graph_io.write_graph(graph, p0, p1, as_text=False)
@@ -183,25 +185,51 @@ class DModel(object):
     def predict(self, cls, *args, **kwargs):
         return self.model.predict(*args, **kwargs)[0][:, cls]
 
+    def get_poly(self, name):
+        l = None
+        for l_ in self.model.layers:
+            if l_.name == name:
+                l = l_ 
+                break
+        if l is None:
+            return 
+        coeffs = [x[0] for x in l.poly_coeffs]
+        integral = l.integral
+        poly_fn = np.polynomial.polynomial.Polynomial(coeffs)
+        return lambda x, fn=poly_fn, i=integral : fn(x) / i
+
+
 
 if __name__ == '__main__':
     figsdir = '/home/snarayan/public_html/figs/poly/v0/'
-    from argparse import ArgumentParser
-    parser = ArgumentParser()
-    args = parser.parse_args()
+
     data = Data()
     model = DModel(penalty=10)
     model_noA = DModel()
-    data_fn = data.gen
+
     batch = 128
     for _ in tqdm(range(500)):
-        model.train(data_fn, batch)
-        model_noA.train(data_fn, batch)
+        model.train(data.gen, batch)
+        model_noA.train(data.gen, batch)
 
-    xs = {i:PlotCfg('x%i' % i, np.linspace(-1, 3, 40), lambda x, i=i: x[0][:, i]) for i in xrange(2)}
-    nn = PlotCfg('nn', np.linspace(0, 1, 40), lambda x: model.predict(1, [x[Data.XIDX], x[Data.ZIDX]]))
-    nn_noA = PlotCfg('nn_noA', np.linspace(0, 1, 40), lambda x: model_noA.predict(1, [x[Data.XIDX], x[Data.ZIDX]]))
+    xs = {i : PlotCfg('x%i'%i, 
+                      np.linspace(-1, 3, 40), 
+                      lambda x, i=i: x[0][:, i]) 
+          for i in xrange(2)}
+    nn = PlotCfg('nn', 
+                 np.linspace(0, 1, 40), 
+                 lambda x: model.predict(1, [x[Data.XIDX], x[Data.ZIDX]]))
+    nn_noA = PlotCfg('nn_noA', 
+                      np.linspace(0, 1, 40), 
+                      lambda x: model_noA.predict(1, [x[Data.XIDX], x[Data.ZIDX]]))
+
     z_binning = np.linspace(0, 1, ZBINS)
     z = PlotCfg('z', z_binning, lambda x: x[2])
-    data.plot(figsdir, xs.values(), 100000, order=range(2))
-# okay decompiling simple2.pyc
+
+    Q0 = model.get_poly('poly0')
+    q0 = PlotCfg('q0',
+                 z_binning,
+                 lambda x : x[Data.UIDX],
+                 weight_fn=Q0(x[Data.UIDX]))
+
+    data.plot(figsdir, [q0] + xs.values(), 100000, order=range(2))
