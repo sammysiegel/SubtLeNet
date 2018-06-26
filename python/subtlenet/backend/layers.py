@@ -108,40 +108,6 @@ class KMeans(Layer):
 
 
 class DenseBroadcast(Layer):
-    """
-    `DenseBroadcast` implements the operation:
-    `output = activation(dot(input, kernel) + bias)`
-    where `activation` is the element-wise activation function
-    passed as the `activation` argument, `kernel` is a weights matrix
-    created by the layer, and `bias` is a bias vector created by the layer
-    (only applicable if `use_bias` is `True`). It is practically identical
-    to `Dense`, except if `input` has rank greater than 2, it is not flattened,
-    but rather the dot is broadcast across the remaining dimensions.
-
-    # Arguments
-        units: Positive integer, dimensionality of the output space.
-        activation: Activation function to use
-            If you don't specify anything, no activation is applied
-            (ie. "linear" activation: `a(x) = x`).
-        use_bias: Boolean, whether the layer uses a bias vector.
-        kernel_initializer: Initializer for the `kernel` weights matrix
-        bias_initializer: Initializer for the bias vector
-        kernel_regularizer: Regularizer function applied to
-            the `kernel` weights matrix
-        bias_regularizer: Regularizer function applied to the bias vector
-        activity_regularizer: Regularizer function applied to
-            the output of the layer (its "activation").
-        kernel_constraint: Constraint function applied to
-            the `kernel` weights matrix
-        bias_constraint: Constraint function applied to the bias vector
-
-    # Input shape
-        nD tensor with shape: `(batch_size, input_dim, ...)`.
-
-    # Output shape
-        nD tensor with shape: `(batch_size, units, ...)`.
-    """
-
     def __init__(self, units,
                  activation=None,
                  use_bias=True,
@@ -247,7 +213,6 @@ class LorentzInnerCell(Layer):
             Fraction of the units to drop for
             the linear transformation of the recurrent state.
     """
-
     def __init__(self,
                  activation='linear',
                  dropout=0.,
@@ -532,7 +497,6 @@ class PolyLayer(Layer):
         self.alpha = alpha
         self._init = init
         self._norm = K.constant([[1./x] for x in range(1,order+2)])
-        print K.eval(self._norm)
         super(PolyLayer, self).__init__(**kwargs)
 
     @property
@@ -580,21 +544,20 @@ def choose(n, k):
 
 
 class ConvexPolyLayer(Layer):
-    def __init__(self, order, init=None, return_coeffs=False, alpha=0.0, **kwargs):
+    def __init__(self, order, init=None, return_coeffs=False, alpha=0.0, weighted=False, **kwargs):
         super(ConvexPolyLayer, self).__init__(**kwargs)
         self.return_coeffs = return_coeffs
         self.order = order
         self.output_dim = order + 1
         self.alpha = alpha
         self._init = init
+        self._weighted = weighted
         vals = [[0 for _ in self.powers] for __ in self.powers]
         for a in self.powers:
             for b in self.powers:
                 for k in xrange(b+1):
-                    print a, b, k
                     vals[a][b] += (np.power(-1, k) * choose(b, k) * 1. / (a + k + 1))
         self._norm = K.constant(vals)
-        print K.eval(self._norm)
 
     @property
     def powers(self):
@@ -622,14 +585,22 @@ class ConvexPolyLayer(Layer):
     def build(self, input_shape):
         self.kernel = self.add_weight(name='kernel',
                                       shape=(self.order + 1, self.order + 1),
-                                      initializer='uniform',
+                                      initializer='ones',
                                       trainable=True)
         if self._init is not None:
             self._init = [[x] for x in self._init]
             K.set_value(self.kernel, self._init)
         super(ConvexPolyLayer, self).build(input_shape)
 
-    def call(self, x):
+    def call(self, x_, return_coeffs=False):
+        if return_coeffs:
+            return K.expand_dims(self.kernel, axis=0)
+        if self._weighted:
+            x = x_[:,:,0]
+            w = x_[:,:,1]
+        else:
+            x = x_
+            w = K.ones_like(x)
         basis0 = K.expand_dims(K.concatenate([K.pow(x, i) for i in self.powers]))
         one = K.ones_like(x)
         basis1 = K.expand_dims(K.concatenate([K.pow(one - x, i) for i in self.powers]))
@@ -638,15 +609,10 @@ class ConvexPolyLayer(Layer):
         prob = K.expand_dims(K.sum(K.sum(basis * self.kernel, axis=1), axis=1) / self._integral)
         mask = K.abs(x - 0.5) <= 0.5 # between 0 and 1
         # likelihood
-        print K.int_shape(prob), K.int_shape(mask), K.int_shape((self.alpha * (K.abs(x-0.5) - 0.5)))
         l = tf.where(mask, -K.log(prob),
                      self.alpha * (K.abs(x-0.5) - 0.5))
         l += K.sum(K.relu(-self.kernel)) / K.max(K.abs(self.kernel)) # kernel coeffs should always be positiv
-        if self.return_coeffs:
-            coeffs = K.transpose(K.repeat_elements(self.kernel, rep=K.shape(x)[0], axis=1))
-            return K.concatenate([l, coeffs])
-        else:
-            return l
+        return l * w
 
     def compute_output_shape(self, input_shape):
         if self.return_coeffs:

@@ -19,6 +19,10 @@ def nlog_loss(y_true, y_pred):
 def pred_loss(y_true, y_pred):
   return y_pred
 
+def kernel_loss(y_true, y_pred):
+  # y_true is junk
+  # y_pred is of dim (2, order+1, order+1)
+  return K.mean(K.square(K.flatten(y_pred[0] - y_pred[1])))
 
 def huber(y_true, y_pred):
   diff = y_true - y_pred

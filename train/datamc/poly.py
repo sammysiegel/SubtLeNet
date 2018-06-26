@@ -18,7 +18,7 @@ sqr = np.square
 NZBINS = 20; ZLO = 0; ZHI = 3
 ZBIN = False
 lmbda = 150
-D = 2
+D = 5
 
 def _make_parent(path):
     os.system('mkdir -p %s'%('/'.join(path.split('/')[:-1])))
@@ -63,8 +63,10 @@ class Data(object):
 #            x = np.maximum(x, np.random.uniform(size=N))
 #        for _ in xrange(3):
 #            x = np.minimum(x, np.random.uniform(size=N))
-#        x = np.random.normal(loc=0.5,scale=0.5,size=N)
-        x = np.random.exponential(size=N)
+        x = np.random.randn(N)*0.5 + 1
+        lo = 0; hi = 2
+        x = (x - lo) / (hi - lo)
+#        x = np.random.exponential(size=N)
         mask = np.logical_and(x>0, x<1)
         return x[mask], np.random.uniform(size=np.sum(mask))
     def plot(self, outpath, cfgs, N, order=None, scale=True):
@@ -141,7 +143,7 @@ if __name__ == '__main__':
                 lambda x : x[0])
     pred = PlotCfg('pred', np.linspace(0, 1, 40),
                    lambda x : x[1],
-                   weight_fn =  lambda x : poly(x[1])  )
+                   weight_fn =  lambda x : poly(x[1]))
     data.plot(figsdir, [x, pred], 100000, scale=False)
 
 #    x = {i : PlotCfg('x%i'%i, np.linspace(-1, 3, 40),
