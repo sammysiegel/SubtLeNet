@@ -1,3 +1,5 @@
+#!/usr/bin/env python2.7
+
 from keras.models import Model, load_model
 from keras.callbacks import ModelCheckpoint
 from subtlenet.backend.keras_objects import *
@@ -5,7 +7,7 @@ from subtlenet.backend.losses import *
 from subtlenet.backend.layers import *
 
 import os, numpy as np
-from sys import stdout
+from sys import stdout, exit
 from tqdm import tqdm
 from subtlenet import utils
 
@@ -18,6 +20,9 @@ ZBINS = 20
 
 def _make_parent(path):
     os.system('mkdir -p %s' % ('/').join(path.split('/')[:-1]))
+
+def idx(l, data):
+    return [data[i] for i in l]
 
 
 class PlotCfg(object):
@@ -42,11 +47,9 @@ class PlotCfg(object):
         weight = self._weight_fn(data) if self._weight_fn is not None else None
         cut    = self._cut_fn(data)    if self._cut_fn is not None    else np.ones(x.shape[0]).astype(bool)
         for c in self.classes:
-            mask = np.logical_and(cut, data[1] == c)
+            mask = np.logical_and(cut, data[Data.YIDX] == c)
             w = weight[mask] if weight is not None else None
             self.hists[c].fill_array(x[mask], weights=w)
-
-        return
 
 
 class Data(object):
@@ -83,7 +86,7 @@ class Data(object):
         else:
             w_masked = 1 - y
         idx = np.random.permutation(y.shape[0])
-        return x[idx], z[idx], y[idx], w[idx], w_masked[idx], np.random.uniform(y.shape[0])
+        return x[idx], z[idx], y[idx], w[idx], w_masked[idx], np.random.uniform(size=y.shape[0])
 
     def plot(self, outpath, cfgs, N, order=None, scale=True):
         outpath += '/'
@@ -117,10 +120,13 @@ class DModel(object):
         losses += [kernel_loss]
 
         X = Input(shape=(n_inputs,), name='X')
-        h = Dense(2 * n_inputs, activation='tanh', kernel_initializer='lecun_uniform')(X)
-        h = Dense(2 * n_inputs, activation='relu', kernel_initializer='lecun_uniform')(h)
+        h = BatchNormalization()(X)
+        h = Dense(2 * n_inputs, activation='tanh', kernel_initializer='lecun_uniform')(h)
+        h = BatchNormalization()(h)
+#        h = Dense(2 * n_inputs, activation='relu', kernel_initializer='lecun_uniform')(h)
+#        h = Dense(n_inputs, activation='relu', kernel_initializer='lecun_uniform')(h)
         h = Dense(n_inputs, activation='relu', kernel_initializer='lecun_uniform')(h)
-        h = Dense(n_inputs, activation='relu', kernel_initializer='lecun_uniform')(h)
+        h = BatchNormalization()(h)
         Y = Dense(2, activation='softmax', kernel_initializer='lecun_uniform', name='Y')(h)
 
         p0 = ConvexPolyLayer(D, alpha=0, name='poly0')
@@ -133,17 +139,22 @@ class DModel(object):
         P1 = p1(Z, return_coeffs=False)
         prob1 = Lambda(lambda x: x[:, 1])(Y)
         Q1 = multiply([prob1, P1])
+#        print K.int_shape(Q1)
+#        exit(1)
         K1 = p1(Z, return_coeffs=True)
-        K = concatenate([K0, K1], axis=0)
+        KDiff = concatenate([K0, K1], axis=0)
 
-        # self.model = Model(inputs=[X, Z], outputs=[Y, Q0, Q1, K])
+        # self.model = Model(inputs=[X, Z], outputs=[Y, Q0, Q1, KDiff])
         # self.model.compile(loss=losses, 
         #                    loss_weights=[1, 100 * penalty, 100 * penalty, penalty], 
         #                    optimizer=Adam())
-        self.model = Model(inputs=[Z], outputs=[Q0])
-        self.model.compile(loss=losses[1:2], 
+        self.model = Model(inputs=[X, Z], outputs=[Y, Q0, Q1])
+        self.model.compile(loss=losses[:3], 
                            optimizer=Adam())
         DModel._sum('model', self.model)
+
+        self.discriminator = Model(inputs=[X], outputs=[Y])
+        self.discriminator.compile(loss=losses[0], optimizer=Adam())
 
     @staticmethod
     def _sum(name, model):
@@ -152,18 +163,30 @@ class DModel(object):
         model.summary()
         print '=' * len(s)
 
-    def fit(self, x, y, w=None):
-        self.model.fit(x, y, sample_weight=w, verbose=0)
+    def fit(self, model, x, y, w=None):
+        model.fit(x, y, sample_weight=w, verbose=0)
 
-    def tob(self, x, y, w=None):
-        self.model.train_on_batch(x, y, sample_weight=w)
+    def tob(self, model, x, y, w=None):
+        model.train_on_batch(x, y, sample_weight=w)
 
     def train(self, data_fn, batch_size, **kwargs):
         data = data_fn(batch_size)
+        '''
         x = [data[Data.XIDX], data[Data.ZIDX]]
         y = [data[Data.YIDX], data[Data.ZIDX], data[Data.ZIDX], np.zeros_like(data[Data.YIDX])]
         w = [data[Data.WIDX], data[Data.WIDX], data[Data.MIDX], data[Data.WIDX]]
-        self.tob(x, y, w, **kwargs)
+        '''
+        x = idx([Data.XIDX, Data.ZIDX], data)
+        y = idx([Data.YIDX, Data.ZIDX, Data.ZIDX], data)
+        w = idx([Data.WIDX, Data.MIDX, Data.MIDX], data)
+        self.tob(self.model, x, y, w, **kwargs)
+
+    def train_d(self, data_fn, batch_size, **kwargs):
+        data = data_fn(batch_size)
+        x = idx([Data.XIDX], data)
+        y = idx([Data.YIDX], data)
+        w = idx([Data.WIDX], data)
+        self.tob(self.discriminator, x, y, w, **kwargs)
 
     def save_as_keras(self, path):
         _make_parent(path)
@@ -207,29 +230,43 @@ if __name__ == '__main__':
     model = DModel(penalty=10)
     model_noA = DModel()
 
-    batch = 128
-    for _ in tqdm(range(500)):
+    batch = 1024
+#    for _ in tqdm(range(5000)):
+#        model.train_d(data.gen, batch)
+#        model_noA.train_d(data.gen, batch)
+    for _ in tqdm(range(5000)):
         model.train(data.gen, batch)
         model_noA.train(data.gen, batch)
 
     xs = {i : PlotCfg('x%i'%i, 
                       np.linspace(-1, 3, 40), 
-                      lambda x, i=i: x[0][:, i]) 
+                      lambda x, i=i: x[Data.XIDX][:, i]) 
           for i in xrange(2)}
     nn = PlotCfg('nn', 
                  np.linspace(0, 1, 40), 
-                 lambda x: model.predict(1, [x[Data.XIDX], x[Data.ZIDX]]))
+                 lambda x: model.discriminator.predict(x[Data.XIDX])[:,1])
     nn_noA = PlotCfg('nn_noA', 
                       np.linspace(0, 1, 40), 
-                      lambda x: model_noA.predict(1, [x[Data.XIDX], x[Data.ZIDX]]))
+                      lambda x: model_noA.discriminator.predict(x[Data.XIDX])[:,1])
 
-    z_binning = np.linspace(0, 1, ZBINS)
-    z = PlotCfg('z', z_binning, lambda x: x[2])
+    z_binning = np.linspace(0, 1, 40)
+    z = PlotCfg('z', z_binning, lambda x: x[Data.ZIDX])
+    zcut = PlotCfg('zcut', z_binning, lambda x: x[Data.ZIDX],
+                    cut_fn=lambda x : model.discriminator.predict(x[Data.XIDX])[:,1]>0.8)
+    zw = PlotCfg('zw', z_binning, lambda x: x[Data.ZIDX], 
+                 weight_fn=lambda x : model.discriminator.predict(x[Data.XIDX])[:,1])
 
     Q0 = model.get_poly('poly0')
     q0 = PlotCfg('q0',
                  z_binning,
                  lambda x : x[Data.UIDX],
-                 weight_fn=Q0(x[Data.UIDX]))
+                 weight_fn=lambda x : Q0(x[Data.UIDX]))
+    '''
+    Q1 = model.get_poly('poly1')
+    q1 = PlotCfg('q1',
+                 z_binning,
+                 lambda x : x[Data.UIDX],
+                 weight_fn=lambda x : Q1(x[Data.UIDX]))
+    '''
 
-    data.plot(figsdir, [q0] + xs.values(), 100000, order=range(2))
+    data.plot(figsdir, [nn, q0, z, zw, zcut] + xs.values(), 100000, order=range(2))
