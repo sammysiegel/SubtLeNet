@@ -86,7 +86,9 @@ class Data(object):
         else:
             w_masked = 1 - y
         idx = np.random.permutation(y.shape[0])
-        return x[idx], z[idx], y[idx], w[idx], w_masked[idx], np.random.uniform(size=y.shape[0])
+        return (x[idx], z[idx], y[idx], 
+                w[idx], w_masked[idx], 
+                np.random.uniform(size=y.shape[0]))
 
     def plot(self, outpath, cfgs, N, order=None, scale=True):
         outpath += '/'
@@ -123,38 +125,45 @@ class DModel(object):
         h = BatchNormalization()(X)
         h = Dense(2 * n_inputs, activation='tanh', kernel_initializer='lecun_uniform')(h)
         h = BatchNormalization()(h)
-#        h = Dense(2 * n_inputs, activation='relu', kernel_initializer='lecun_uniform')(h)
-#        h = Dense(n_inputs, activation='relu', kernel_initializer='lecun_uniform')(h)
+        h = Dense(2 * n_inputs, activation='tanh', kernel_initializer='lecun_uniform')(h)
+        h = BatchNormalization()(h)
+        h = Dense(n_inputs, activation='relu', kernel_initializer='lecun_uniform')(h)
+        h = BatchNormalization()(h)
         h = Dense(n_inputs, activation='relu', kernel_initializer='lecun_uniform')(h)
         h = BatchNormalization()(h)
         Y = Dense(2, activation='softmax', kernel_initializer='lecun_uniform', name='Y')(h)
+
+        self.discriminator = Model(inputs=[X], outputs=[Y])
+        self.discriminator.compile(loss=losses[0], optimizer=Adam())
+        DModel._sum('discriminator', self.discriminator)
 
         p0 = ConvexPolyLayer(D, alpha=0, name='poly0')
         p1 = ConvexPolyLayer(D, alpha=0, name='poly1')
 
         Z = Input(shape=(1, ), name='Z')
-        Q0 = p0(Z, return_coeffs=False)
-        K0 = p0(Z, return_coeffs=True)
+        Q0 = p0(Z)
+        Q1 = p1(Z)
 
-        P1 = p1(Z, return_coeffs=False)
-        prob1 = Lambda(lambda x: x[:, 1])(Y)
-        Q1 = multiply([prob1, P1])
-#        print K.int_shape(Q1)
-#        exit(1)
-        K1 = p1(Z, return_coeffs=True)
-        KDiff = concatenate([K0, K1], axis=0)
+        Q1 = multiply([Q1, Lambda(lambda x : x[:, 1])(Y)])
+        
+        K0 = WeightLayer(p0)(Z)
+        K1 = WeightLayer(p1)(Z)
+        KDiff = concatenate([K0, K1], axis=1)
+        print K.int_shape(KDiff)
+        print K.int_shape(K1)
 
         # self.model = Model(inputs=[X, Z], outputs=[Y, Q0, Q1, KDiff])
         # self.model.compile(loss=losses, 
         #                    loss_weights=[1, 100 * penalty, 100 * penalty, penalty], 
         #                    optimizer=Adam())
-        self.model = Model(inputs=[X, Z], outputs=[Y, Q0, Q1])
-        self.model.compile(loss=losses[:3], 
+        self.model = Model(inputs=[X, Z], outputs=[Y, Q0])
+#        utils.freeze(self.model, True, self.discriminator.layers) # unfreeze all of model except D
+        self.model.compile(loss=losses[:2], 
+#                           loss_weights=[1, 100 * penalty, 100 * penalty, penalty], 
                            optimizer=Adam())
         DModel._sum('model', self.model)
 
-        self.discriminator = Model(inputs=[X], outputs=[Y])
-        self.discriminator.compile(loss=losses[0], optimizer=Adam())
+
 
     @staticmethod
     def _sum(name, model):
@@ -171,14 +180,15 @@ class DModel(object):
 
     def train(self, data_fn, batch_size, **kwargs):
         data = data_fn(batch_size)
+        N = data[Data.XIDX].shape[0]
         '''
         x = [data[Data.XIDX], data[Data.ZIDX]]
         y = [data[Data.YIDX], data[Data.ZIDX], data[Data.ZIDX], np.zeros_like(data[Data.YIDX])]
         w = [data[Data.WIDX], data[Data.WIDX], data[Data.MIDX], data[Data.WIDX]]
         '''
         x = idx([Data.XIDX, Data.ZIDX], data)
-        y = idx([Data.YIDX, Data.ZIDX, Data.ZIDX], data)
-        w = idx([Data.WIDX, Data.MIDX, Data.MIDX], data)
+        y = idx([Data.YIDX, Data.ZIDX], data) #+ [np.zeros(N*2*D*D).reshape(N,2,D*D)]
+        w = idx([Data.WIDX, Data.MIDX], data) #+ [np.ones(N)]
         self.tob(self.model, x, y, w, **kwargs)
 
     def train_d(self, data_fn, batch_size, **kwargs):
@@ -226,17 +236,21 @@ class DModel(object):
 if __name__ == '__main__':
     figsdir = '/home/snarayan/public_html/figs/poly/v0/'
 
-    data = Data()
-    model = DModel(penalty=10)
+    model = DModel(penalty=100)
     model_noA = DModel()
+    data = Data()
 
-    batch = 1024
-#    for _ in tqdm(range(5000)):
-#        model.train_d(data.gen, batch)
+    batch = 128
+    NBATCH = 5000
+    for _ in tqdm(range(NBATCH)):
+        model.train_d(data.gen, batch)
 #        model_noA.train_d(data.gen, batch)
-    for _ in tqdm(range(5000)):
+    for _ in tqdm(range(NBATCH)):
         model.train(data.gen, batch)
-        model_noA.train(data.gen, batch)
+#        model_noA.train(data.gen, batch)
+    #for _ in tqdm(range(NBATCH)):
+    #    model.train_d(data.gen, batch)
+    #    model_noA.train_d(data.gen, batch)
 
     xs = {i : PlotCfg('x%i'%i, 
                       np.linspace(-1, 3, 40), 
@@ -261,12 +275,10 @@ if __name__ == '__main__':
                  z_binning,
                  lambda x : x[Data.UIDX],
                  weight_fn=lambda x : Q0(x[Data.UIDX]))
-    '''
-    Q1 = model.get_poly('poly1')
-    q1 = PlotCfg('q1',
-                 z_binning,
-                 lambda x : x[Data.UIDX],
-                 weight_fn=lambda x : Q1(x[Data.UIDX]))
-    '''
+    #Q1 = model.get_poly('poly1')
+    #q1 = PlotCfg('q1',
+    #             z_binning,
+    #             lambda x : x[Data.UIDX],
+    #             weight_fn=lambda x : Q1(x[Data.UIDX]))
 
-    data.plot(figsdir, [nn, q0, z, zw, zcut] + xs.values(), 100000, order=range(2))
+    data.plot(figsdir, [nn, q0,  z, zw, zcut] + xs.values(), 100000, order=range(2))

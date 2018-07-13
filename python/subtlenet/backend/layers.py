@@ -543,10 +543,24 @@ def choose(n, k):
     return np.math.factorial(n) / (np.math.factorial(k) * np.math.factorial(n - k))
 
 
+class WeightLayer(Layer):
+    def __init__(self, poly_layer, **kwargs):
+        super(WeightLayer, self).__init__(**kwargs)
+        self.parent = poly_layer
+    def build(self, input_shape):
+        super(WeightLayer, self).build(input_shape)
+    def call(self, x):
+        ones = K.flatten(K.ones_like(x))
+        flat = K.flatten(self.parent.kernel)
+        reshape = tf.einsum('i,j->ij', ones, flat)
+        return K.expand_dims(reshape, axis=1)
+    def compute_output_shape(self, input_shape):
+        order = self.parent.order
+        return (input_shape[0], 1, (order + 1) ** 2)
+
 class ConvexPolyLayer(Layer):
-    def __init__(self, order, init=None, return_coeffs=False, alpha=0.0, weighted=False, **kwargs):
+    def __init__(self, order, init=None, alpha=0.0, weighted=False, **kwargs):
         super(ConvexPolyLayer, self).__init__(**kwargs)
-        self.return_coeffs = return_coeffs
         self.order = order
         self.output_dim = order + 1
         self.alpha = alpha
@@ -592,9 +606,7 @@ class ConvexPolyLayer(Layer):
             K.set_value(self.kernel, self._init)
         super(ConvexPolyLayer, self).build(input_shape)
 
-    def call(self, x_, return_coeffs=False):
-        if return_coeffs:
-            return K.expand_dims(self.kernel, axis=0)
+    def call(self, x_):
         if self._weighted:
             x = x_[:,:,0]
             w = x_[:,:,1]
@@ -615,10 +627,7 @@ class ConvexPolyLayer(Layer):
         return l * w
 
     def compute_output_shape(self, input_shape):
-        if self.return_coeffs:
-            return (input_shape[0], self.order + 2)
-        else:
-            return (input_shape[0], 1)
+        return (input_shape[0], 1)
 
 
 
