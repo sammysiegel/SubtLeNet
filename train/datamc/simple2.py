@@ -157,7 +157,8 @@ class DModel(object):
         #                    loss_weights=[1, 100 * penalty, 100 * penalty, penalty], 
         #                    optimizer=Adam())
         self.model = Model(inputs=[X, Z], outputs=[Y, Q0])
-#        utils.freeze(self.model, True, self.discriminator.layers) # unfreeze all of model except D
+        utils.freeze(self.model, False, self.discriminator.layers) # unfreeze all of model except D
+#        utils.freeze(self.discriminator, True)
         self.model.compile(loss=losses[:2], 
 #                           loss_weights=[1, 100 * penalty, 100 * penalty, penalty], 
                            optimizer=Adam())
