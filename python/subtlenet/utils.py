@@ -37,10 +37,10 @@ def get_processor():
 ## freeze layers of an NN
 def freeze(model, on=False, to_skip = []):
     def _act(l,o):
-#        print ('un-frozen' if o else 'frozen')
+        print ('un-frozen' if o else 'frozen')
         l.trainable = o
     for l in model.layers:
-#        print l.name ,
+        print l.name ,
         _act(l, on == (l not in to_skip))
 
 
