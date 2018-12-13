@@ -11,7 +11,7 @@ from collections import namedtuple
 
 from subtlenet import utils
 utils.set_processor('cpu')
-VALSPLIT = 1 #0.4
+VALSPLIT = 0.7
 MULTICLASS = False
 
 def _make_parent(path):
@@ -144,13 +144,6 @@ def get_mu_std(samples):
     return mu, std
 
 if __name__ == '__main__':
-    basedir = '/data/t3home000/snarayan/smh_dnn/v12/'
-    figsdir = '/home/snarayan/public_html/figs/smh/v10/evt/'
-    samples = ['VH', 'Diboson', 'SingleTop', 'TT', 'WJets', 'ZtoNuNu']
-    samples = [Sample(s, basedir, len(samples)) for s in samples]
-    n_inputs = samples[0].X.shape[1]
-    n_hidden = 4
-
     from argparse import ArgumentParser
     parser = ArgumentParser()
     parser.add_argument('--train', action='store_true')
@@ -159,7 +152,14 @@ if __name__ == '__main__':
     parser.add_argument('--hidden', type=int, default=4)
     args = parser.parse_args()
 
+    basedir = '/data/t3home000/snarayan/smh_dnn/v12/'
+    figsdir = '/home/snarayan/public_html/figs/smh/v10/evt_%i/'%(args.version)
     modeldir = 'models/evt/v%i/'%(args.version)
+
+    samples = ['VH', 'Diboson', 'SingleTop', 'TT', 'WJets', 'ZtoNuNu']
+    samples = [Sample(s, basedir, len(samples)) for s in samples]
+    n_inputs = samples[0].X.shape[1]
+    n_hidden = 4
 
     print 'Standardizing...'
     mu, std = get_mu_std(samples)
