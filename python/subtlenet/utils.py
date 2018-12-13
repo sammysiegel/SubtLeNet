@@ -20,7 +20,6 @@ def set_processor(name):
         environ["CUDA_VISIBLE_DEVICES"] = ""                
         return
     if name == 'gpu':
-        set_processor('cpu') # haha
         del environ['CUDA_DEVICE_ORDER']
         del environ['CUDA_VISIBLE_DEVICES']
         return

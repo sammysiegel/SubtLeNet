@@ -10,7 +10,12 @@ import keras.backend as K
 
 from keras.losses import categorical_crossentropy, mse
 
+cce = categorical_crossentropy
+
 from keras.utils import np_utils
 
 def AMSgrad(*args, **kwargs):
     return Adam(*args, amsgrad=True, **kwargs)
+
+
+from keras.utils import plot_model

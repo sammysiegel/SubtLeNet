@@ -566,7 +566,7 @@ class ConvexPolyLayer(Layer):
         self.alpha = alpha
         self._init = init
         self._weighted = weighted
-        vals = [[0 for _ in self.powers] for __ in self.powers]
+        vals  = np.zeros(shape=(len(self.powers),len(self.powers)))
         for a in self.powers:
             for b in self.powers:
                 for k in xrange(b+1):
@@ -610,26 +610,44 @@ class ConvexPolyLayer(Layer):
         if self._weighted:
             x = x_[:,:,0]
             w = x_[:,:,1]
+            one = K.ones_like(x)
         else:
             x = x_
-            w = K.ones_like(x)
+            one = K.ones_like(x)
+            w = one 
+
         basis0 = K.expand_dims(K.concatenate([K.pow(x, i) for i in self.powers]))
-        one = K.ones_like(x)
         basis1 = K.expand_dims(K.concatenate([K.pow(one - x, i) for i in self.powers]))
         basis = K.batch_dot(basis0, basis1, axes=2)
+
         self._integral = K.sum(self.kernel * self._norm) # normalize the integral
+
         prob = K.expand_dims(K.sum(K.sum(basis * self.kernel, axis=1), axis=1) / self._integral)
         mask = K.abs(x - 0.5) <= 0.5 # between 0 and 1
         # likelihood
         l = tf.where(mask, -K.log(prob),
                      self.alpha * (K.abs(x-0.5) - 0.5))
-        l += K.sum(K.relu(-self.kernel)) / K.max(K.abs(self.kernel)) # kernel coeffs should always be positiv
+        l += K.sum(K.relu(-self.kernel)) / K.max(K.abs(self.kernel)) # kernel coeffs should always be positive
         return l * w
 
     def compute_output_shape(self, input_shape):
         return (input_shape[0], 1)
 
 
+class ExpandAndConcat(Layer):
+    def __init__(self, axis=-1, **kwargs):
+        self.axis = axis
+        super(ExpandAndConcat, self).__init__(**kwargs)
+    def build(self, input_shape):
+        super(ExpandAndConcat, self).build(input_shape)
+    def call(self, xs):
+        return K.concatenate([K.expand_dims(x) for x in xs],
+                             axis=self.axis)
+    def compute_output_shape(self, input_shape):
+        assert(len(input_shape) > 0)
+        dim = input_shape[0][1]
+        assert(not any([x[1] != dim for x in input_shape]))
+        return (input_shape[0][0], dim)
 
 # https://github.com/michetonu/gradient_reversal_keras_tf/blob/master/flipGradientTF.py
 def _reverse(x, scale = 1):
