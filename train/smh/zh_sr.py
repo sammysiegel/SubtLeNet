@@ -2,14 +2,18 @@
 
 from keras.models import Model, load_model
 from keras.callbacks import ModelCheckpoint
-from subtlenet.backend.keras_objects import *
-from subtlenet.backend.losses import *
+#from subtlenet.backend.keras_objects import *
+#from subtlenet.backend.losses import *
+from keras.layers import Dense, BatchNormalization, Input
+from keras.utils import np_utils
+from keras.optimizers import Adam
+import keras.backend as K
 from tensorflow.python.framework import graph_util, graph_io
 import os, sys
 import numpy as np
 from collections import namedtuple
 
-from subtlenet import utils
+import cmssw_utils as utils
 utils.set_processor('cpu')
 VALSPLIT = 0.7
 MULTICLASS = False
@@ -66,7 +70,7 @@ class ClassModel(object):
             h = BatchNormalization()(h)
         h = Dense(n_inputs, activation='tanh')(h)
         h = BatchNormalization()(h)
-        self.outputs = Dense(self.n_targets, activation='softmax')(h)
+        self.outputs = Dense(self.n_targets, activation='softmax', name='output')(h)
 
         self.model = Model(inputs=self.inputs, outputs=self.outputs)
         self.model.compile(optimizer=Adam(),
@@ -161,9 +165,9 @@ if __name__ == '__main__':
     n_inputs = samples[0].X.shape[1]
     n_hidden = 4
 
-    print 'Standardizing...'
-    mu, std = get_mu_std(samples)
-    [s.standardize(mu, std) for s in samples]
+#    print 'Standardizing...'
+#    mu, std = get_mu_std(samples)
+#    [s.standardize(mu, std) for s in samples]
 
     model = ClassModel(n_inputs, n_hidden, len(samples))
     if args.train:
@@ -182,12 +186,12 @@ if __name__ == '__main__':
 
         samples.reverse()
         for i in xrange(len(samples) if MULTICLASS else 2):
-            plot(np.linspace(0, 1, 20), 
+            plot(np.linspace(-1, 2, 60), 
                  lambda s, i=i : s.Yhat[s.vidx,i],
                  samples, figsdir+'class_%i'%i, xlabel='Class %i'%i)
-
-        for i in xrange(n_inputs):
-            plot(np.linspace(-2, 2, 20),
-                 lambda s, i=i : s.X[s.vidx,i],
-                 samples, figsdir+'feature_%i'%i, xlabel='Feature %i'%i)
-
+#
+#        for i in xrange(n_inputs):
+#            plot(np.linspace(-2, 2, 20),
+#                 lambda s, i=i : s.X[s.vidx,i],
+#                 samples, figsdir+'feature_%i'%i, xlabel='Feature %i'%i)
+#
