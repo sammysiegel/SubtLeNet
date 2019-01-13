@@ -13,10 +13,11 @@ import os, sys
 import numpy as np
 from collections import namedtuple
 
-import cmssw_utils as utils
+import subtlenet.utils as utils 
 utils.set_processor('cpu')
-VALSPLIT = 0.7
+VALSPLIT = 1 #0.7
 MULTICLASS = False
+REGRESSION = True
 
 def _make_parent(path):
     os.system('mkdir -p %s'%('/'.join(path.split('/')[:-1])))
@@ -25,16 +26,19 @@ class Sample(object):
     def __init__(self, name, base, max_Y):
         self.name = name 
         self.X = np.load('%s/%s_%s.npy'%(base, name, 'x'))
-        if MULTICLASS:
-            self.Y = np_utils.to_categorical(
-                        np.load('%s/%s_%s.npy'%(base, name, 'y')),
-                        max_Y
-                    )
+        if REGRESSION:
+            self.Y = np.load('%s/%s_%s.npy'%(base, name, 'y'))
         else:
-            self.Y = np_utils.to_categorical(
-                        (np.load('%s/%s_%s.npy'%(base, name, 'y')) > 0).astype(np.int),
-                        2
-                    )
+            if MULTICLASS:
+                self.Y = np_utils.to_categorical(
+                            np.load('%s/%s_%s.npy'%(base, name, 'y')),
+                            max_Y
+                        )
+            else:
+                self.Y = np_utils.to_categorical(
+                            (np.load('%s/%s_%s.npy'%(base, name, 'y')) > 0).astype(np.int),
+                            2
+                        )
         self.W = np.load('%s/%s_%s.npy'%(base, name, 'w'))
         self.idx = np.random.permutation(self.Y.shape[0])
     @property
@@ -70,24 +74,36 @@ class ClassModel(object):
             h = BatchNormalization()(h)
         h = Dense(n_inputs, activation='tanh')(h)
         h = BatchNormalization()(h)
-        self.outputs = Dense(self.n_targets, activation='softmax', name='output')(h)
+        if REGRESSION:
+            self.outputs = Dense(1, activation='linear', name='output')(h)
 
-        self.model = Model(inputs=self.inputs, outputs=self.outputs)
-        self.model.compile(optimizer=Adam(),
-                           loss='categorical_crossentropy')
+            self.model = Model(inputs=self.inputs, outputs=self.outputs)
+            self.model.compile(optimizer=Adam(),
+                               loss='mse')
+        else:
+            self.outputs = Dense(self.n_targets, activation='softmax', name='output')(h)
+
+            self.model = Model(inputs=self.inputs, outputs=self.outputs)
+            self.model.compile(optimizer=Adam(),
+                               loss='categorical_crossentropy')
         self.model.summary()
     def train(self, samples):
         tX = np.vstack([s.X[s.tidx] for s in samples])
-        tY = np.vstack([s.Y[s.tidx] for s in samples])
         tW = np.concatenate([s.W[s.tidx] for s in samples])
         vX = np.vstack([s.X[s.vidx] for s in samples])
-        vY = np.vstack([s.Y[s.vidx] for s in samples])
         vW = np.concatenate([s.W[s.vidx] for s in samples])
+        if REGRESSION:
+            tY = np.concatenate([s.Y[s.tidx] for s in samples])
+            vY = np.concatenate([s.Y[s.vidx] for s in samples])
+        else:
+            tY = np.vstack([s.Y[s.tidx] for s in samples])
+            vY = np.vstack([s.Y[s.vidx] for s in samples])
 
-        for i in xrange(tY.shape[1]):
-            tot = np.sum(tW[tY[:,i] == 1])
-            tW[tY[:,i] == 1] *= 100/tot
-            vW[vY[:,i] == 1] *= 100/tot
+        if not REGRESSION:
+            for i in xrange(tY.shape[1]):
+                tot = np.sum(tW[tY[:,i] == 1])
+                tW[tY[:,i] == 1] *= 100/tot
+                vW[vY[:,i] == 1] *= 100/tot
 
         history = self.model.fit(tX, tY, sample_weight=tW, 
                                  batch_size=1024, epochs=20, shuffle=True,
@@ -156,18 +172,18 @@ if __name__ == '__main__':
     parser.add_argument('--hidden', type=int, default=4)
     args = parser.parse_args()
 
-    basedir = '/data/t3home000/snarayan/smh_dnn/v12/'
+    basedir = '/data/t3home000/snarayan/smh_dnn/v13/'
     figsdir = '/home/snarayan/public_html/figs/smh/v10/evt_%i/'%(args.version)
     modeldir = 'models/evt/v%i/'%(args.version)
 
     samples = ['VH', 'Diboson', 'SingleTop', 'TT', 'WJets', 'ZtoNuNu']
     samples = [Sample(s, basedir, len(samples)) for s in samples]
     n_inputs = samples[0].X.shape[1]
-    n_hidden = 4
+    n_hidden = 2
 
-#    print 'Standardizing...'
-#    mu, std = get_mu_std(samples)
-#    [s.standardize(mu, std) for s in samples]
+    print 'Standardizing...'
+    mu, std = get_mu_std(samples)
+    [s.standardize(mu, std) for s in samples]
 
     model = ClassModel(n_inputs, n_hidden, len(samples))
     if args.train:
@@ -185,10 +201,18 @@ if __name__ == '__main__':
             s.infer(model)
 
         samples.reverse()
-        for i in xrange(len(samples) if MULTICLASS else 2):
-            plot(np.linspace(-1, 2, 60), 
-                 lambda s, i=i : s.Yhat[s.vidx,i],
-                 samples, figsdir+'class_%i'%i, xlabel='Class %i'%i)
+        if REGRESSION:
+            plot(np.linspace(60, 160, 20),
+                 lambda s : s.Yhat[s.vidx][:,0],
+                 samples, figsdir+'mass_regressed', xlabel='Regressed mass')
+            plot(np.linspace(60, 160, 20),
+                 lambda s : s.Y[s.vidx],
+                 samples, figsdir+'mass_truth', xlabel='True mass')
+        else:
+            for i in xrange(len(samples) if MULTICLASS else 2):
+                plot(np.linspace(0, 1, 20), 
+                     lambda s, i=i : s.Yhat[s.vidx,i],
+                     samples, figsdir+'class_%i'%i, xlabel='Class %i'%i)
 #
 #        for i in xrange(n_inputs):
 #            plot(np.linspace(-2, 2, 20),
