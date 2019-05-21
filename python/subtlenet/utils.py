@@ -3,8 +3,8 @@ from os import environ, getenv
 import sys
 
 import matplotlib as mpl
-mpl.use('cairo')
-import matplotlib.pylab as pl 
+#mpl.use('cairo')
+#import matplotlib.pylab as pl 
 from matplotlib.colors import LogNorm 
 from matplotlib import pyplot as plt
 import seaborn
@@ -58,9 +58,9 @@ _epsilon = np.finfo(float).eps
 def _clip(x):
     return np.sign(x + _epsilon) * np.clip(np.abs(x), _epsilon, np.inf)
 
-default_colors = np.concatenate([pl.cm.tab10(np.linspace(0,1,10)),
-                                 pl.cm.Dark2(np.linspace(0,1,9))])
-
+#default_colors = np.concatenate([pl.cm.tab10(np.linspace(0,1,10)),
+#                                 pl.cm.Dark2(np.linspace(0,1,9))])
+default_colors = seaborn.color_palette('YlGnBu',2)
 def sanitize_mask(x):
     return x==x
 
@@ -310,7 +310,7 @@ class NH2(object):
         if val is None:
             val = self.integral()
         self._content /= val 
-    def plot(self, xlabel=None, ylabel=None, output=None, cmap=pl.cm.hot, norm=None):
+    def plot(self, xlabel=None, ylabel=None, output=None, cmap=None, norm=None):#cmap=pl.cm.hot, norm=None):
         plt.clf()
         ax = plt.gca()
         ax.grid(True,ls='-.',lw=0.4,zorder=-99,color='gray',alpha=0.7,which='both')
@@ -429,7 +429,7 @@ class Roccer(object):
 
         min_value = 1
 
-        colors = pl.cm.tab10(np.linspace(0,1,len(self.cfgs)))
+        #colors = pl.cm.tab10(np.linspace(0,1,len(self.cfgs)))
 
         for i, (sig_hist, bkg_hist, label, customcolor, linestyle) in enumerate(self.cfgs):
             h_sig = sig_hist

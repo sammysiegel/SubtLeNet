@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from sklearn.utils import shuffle
 from keras.models import Model, load_model
 from keras.callbacks import ModelCheckpoint
 #from subtlenet.backend.keras_objects import *
@@ -15,9 +16,9 @@ from collections import namedtuple
 
 import subtlenet.utils as utils 
 utils.set_processor('cpu')
-VALSPLIT = 1 #0.7
+VALSPLIT = 0.25 #0.7
 MULTICLASS = False
-REGRESSION = True
+REGRESSION = False
 
 def _make_parent(path):
     os.system('mkdir -p %s'%('/'.join(path.split('/')[:-1])))
@@ -85,13 +86,14 @@ class ClassModel(object):
 
             self.model = Model(inputs=self.inputs, outputs=self.outputs)
             self.model.compile(optimizer=Adam(),
-                               loss='categorical_crossentropy')
+                               loss='binary_crossentropy')
         self.model.summary()
     def train(self, samples):
         tX = np.vstack([s.X[s.tidx] for s in samples])
         tW = np.concatenate([s.W[s.tidx] for s in samples])
         vX = np.vstack([s.X[s.vidx] for s in samples])
         vW = np.concatenate([s.W[s.vidx] for s in samples])
+        
         if REGRESSION:
             tY = np.concatenate([s.Y[s.tidx] for s in samples])
             vY = np.concatenate([s.Y[s.vidx] for s in samples])
@@ -106,7 +108,7 @@ class ClassModel(object):
                 vW[vY[:,i] == 1] *= 100/tot
 
         history = self.model.fit(tX, tY, sample_weight=tW, 
-                                 batch_size=1024, epochs=20, shuffle=True,
+                                 batch_size=1024, epochs=40, shuffle=True,
                                  validation_data=(vX, vY, vW))
         with open('history.log','w') as flog:
             history = history.history
@@ -172,14 +174,14 @@ if __name__ == '__main__':
     parser.add_argument('--hidden', type=int, default=4)
     args = parser.parse_args()
 
-    basedir = '/data/t3home000/snarayan/smh_dnn/v13/'
-    figsdir = '/home/snarayan/public_html/figs/smh/v10/evt_%i/'%(args.version)
+    basedir = '/eos/uscms/store/group/lpcbacon/jkrupa/May20/'
+    figsdir = 'plots/%s/'%(args.version)
     modeldir = 'models/evt/v%i/'%(args.version)
 
-    samples = ['VH', 'Diboson', 'SingleTop', 'TT', 'WJets', 'ZtoNuNu']
+    samples = ['VectorDiJet115','QCD']
     samples = [Sample(s, basedir, len(samples)) for s in samples]
     n_inputs = samples[0].X.shape[1]
-    n_hidden = 2
+    n_hidden = 4
 
     print 'Standardizing...'
     mu, std = get_mu_std(samples)
@@ -210,7 +212,7 @@ if __name__ == '__main__':
                  samples, figsdir+'mass_truth', xlabel='True mass')
         else:
             for i in xrange(len(samples) if MULTICLASS else 2):
-                plot(np.linspace(0, 1, 20), 
+                plot(np.linspace(0, 1, 50), 
                      lambda s, i=i : s.Yhat[s.vidx,i],
                      samples, figsdir+'class_%i'%i, xlabel='Class %i'%i)
 #
