@@ -389,9 +389,9 @@ class Roccer(object):
     def __init__(self, y_range=range(-5,1), axis=[0.2,1,0.0005,1]):
         self.cfgs = []
         self.axis = axis
-        self.yticks = [10**x for x in y_range]
-        self.yticklabels = [('1' if x==0 else r'$10^{%i}$'%x) for x in y_range]
-        self.xticks = [0.2, 0.4, 0.6, 0.8, 1]
+        self.yticks = [0.0, 0.2, 0.4, 0.6, 0.8, 1]#[10**x for x in y_range]
+        self.yticklabels = map(str, self.yticks)# [('1' if x==0 else r'$10^{%i}$'%x) for x in y_range]
+        self.xticks = [0.0, 0.2, 0.4, 0.6, 0.8, 1]
         self.xticklabels = map(str, self.xticks)
     def add_vars(self, sig_hists, bkg_hists, labels, order=None):
         if order is None:
@@ -429,7 +429,7 @@ class Roccer(object):
 
         min_value = 1
 
-        #colors = pl.cm.tab10(np.linspace(0,1,len(self.cfgs)))
+        colors = seaborn.color_palette('YlGnBu',5) #pl.cm.tab10(np.linspace(0,1,len(self.cfgs)))
 
         for i, (sig_hist, bkg_hist, label, customcolor, linestyle) in enumerate(self.cfgs):
             h_sig = sig_hist
@@ -471,8 +471,8 @@ class Roccer(object):
         #plt.set_ylim(self.axis[-2:])
         ax.tick_params(axis='both', which='major', labelsize=20)
         ax.tick_params(axis='both', which='minor', labelsize=0)
-        plt.yscale('log', nonposy='clip')
-        plt.xscale('log', nonposx='clip')
+        #plt.yscale('log', nonposy='clip')
+        #plt.xscale('log', nonposx='clip')
         plt.legend(loc=2, fontsize=22)
         plt.ylabel('Background fake rate', fontsize=24)
         plt.xlabel('Signal efficiency', fontsize=24)
