@@ -24,7 +24,7 @@ REGRESSION = False
 np.random.seed(5)
 
 basedir = '/eos/uscms/store/group/lpcbacon/jkrupa/Jun28_1/'
-
+Nqcd = 50000
 def _make_parent(path):
     os.system('mkdir -p %s'%('/'.join(path.split('/')[:-1])))
 
@@ -32,9 +32,9 @@ class Sample(object):
     def __init__(self, name, base, max_Y):
         self.name = name 
  
-        if 'QCD' in name:        self.X = np.load('%s/%s_%s.npy'%(base, name, 'x'))[:35000]
+        if 'QCD' in name:        self.X = np.load('%s/%s_%s.npy'%(base, name, 'x'))[:Nqcd]
         else:                    self.X = np.load('%s/%s_%s.npy'%(base, name, 'x'))
-        if 'QCD' in name:        self.N2 = np.load('%s/%s_%s.npy'%(base, name, 'ss_vars'))[:35000]
+        if 'QCD' in name:        self.N2 = np.load('%s/%s_%s.npy'%(base, name, 'ss_vars'))[:Nqcd]
         else:                    self.N2 = np.load('%s/%s_%s.npy'%(base, name, 'ss_vars'))
 
 
@@ -49,7 +49,7 @@ class Sample(object):
             else:
               if 'QCD' in name:
                 self.Y = np_utils.to_categorical(
-                            (np.load('%s/%s_%s.npy'%(base, name, 'y'))[:35000] > 0).astype(np.int),
+                            (np.load('%s/%s_%s.npy'%(base, name, 'y'))[:Nqcd] > 0).astype(np.int),
                             2
                         )
               else:
@@ -58,7 +58,7 @@ class Sample(object):
                             2
                         )
  
-        if 'QCD' in name: self.W = np.load('%s/%s_%s.npy'%(base, name, 'w'))[:35000]
+        if 'QCD' in name: self.W = np.load('%s/%s_%s.npy'%(base, name, 'w'))[:Nqcd]
         else:             self.W = np.load('%s/%s_%s.npy'%(base, name, 'w'))
         self.idx = np.random.permutation(self.Y.shape[0])
     @property
@@ -295,7 +295,7 @@ if __name__ == '__main__':
     #[s.standardize(mu, std) for s in samples]
 
 
-    if 'dense' in args.model:
+    if 'DNN' in args.model:
         model = ClassModelDense(n_inputs, n_hidden, len(samples),samples)
         if args.train:
             print 'Training dense...'
@@ -306,7 +306,7 @@ if __name__ == '__main__':
             print 'Loading dense...'
             model.load_model(modeldir+'weights_dense.h5')
 
-    if 'gru' in args.model:
+    if 'GRU' in args.model:
         model = ClassModelGRU(n_inputs, n_hidden, len(samples),samples)
         if args.train:
             print 'Training gru...'
