@@ -31,8 +31,12 @@ def _make_parent(path):
 class Sample(object):
     def __init__(self, name, base, max_Y):
         self.name = name 
-        self.X = np.load('%s/%s_%s.npy'%(base, name, 'x'))
-        self.N2 = np.load('%s/%s_%s.npy'%(base, name, 'ss_vars'))
+ 
+        if 'QCD' in name:        self.X = np.load('%s/%s_%s.npy'%(base, name, 'x'))[:35000]
+        else:                    self.X = np.load('%s/%s_%s.npy'%(base, name, 'x'))
+        if 'QCD' in name:        self.N2 = np.load('%s/%s_%s.npy'%(base, name, 'ss_vars'))[:35000]
+        else:                    self.N2 = np.load('%s/%s_%s.npy'%(base, name, 'ss_vars'))
+
 
         if REGRESSION:
             self.Y = np.load('%s/%s_%s.npy'%(base, name, 'y'))
@@ -43,11 +47,19 @@ class Sample(object):
                             max_Y
                         )
             else:
+              if 'QCD' in name:
+                self.Y = np_utils.to_categorical(
+                            (np.load('%s/%s_%s.npy'%(base, name, 'y'))[:35000] > 0).astype(np.int),
+                            2
+                        )
+              else:
                 self.Y = np_utils.to_categorical(
                             (np.load('%s/%s_%s.npy'%(base, name, 'y')) > 0).astype(np.int),
                             2
                         )
-        self.W = np.load('%s/%s_%s.npy'%(base, name, 'w'))
+ 
+        if 'QCD' in name: self.W = np.load('%s/%s_%s.npy'%(base, name, 'w'))[:35000]
+        else:             self.W = np.load('%s/%s_%s.npy'%(base, name, 'w'))
         self.idx = np.random.permutation(self.Y.shape[0])
     @property
     def tidx(self):
@@ -62,6 +74,7 @@ class Sample(object):
         else:
             return self.idx[:int(VALSPLIT*len(self.idx))]
     def infer(self, model):
+        if 'GRU' in model.name: self.X = np.reshape(self.X, (self.X.shape[0], 1, self.X.shape[1])) 
         self.Yhat = model.predict(self.X)
     def standardize(self, mu, std):
         self.X = (self.X - mu) / std
@@ -70,7 +83,7 @@ class Sample(object):
 class ClassModelDense(object):
     def __init__(self, n_inputs, n_hidden, n_targets,samples):
         self._hidden = 0
-
+        self.name = 'Dense'
         self.n_inputs = n_inputs
         self.n_targets = n_targets if MULTICLASS else 2
         self.n_hidden = n_hidden
@@ -150,15 +163,19 @@ class ClassModelGRU(object):
         self.tW = np.concatenate([s.W[s.tidx] for s in samples])
         self.vX = np.vstack([s.X[:][s.vidx] for s in samples])
         self.vW = np.concatenate([s.W[s.vidx] for s in samples])
-
+        self.name = 'GRU'
         print self.tX.shape
 
+        self.tX = np.reshape(self.tX, (self.tX.shape[0], 1, self.tX.shape[1]))
+        self.vX = np.reshape(self.vX, (self.vX.shape[0], 1, self.vX.shape[1]))
+
+        print self.tX.shape
         self._hidden = 0
 
         self.n_inputs = n_inputs
         self.n_targets = n_targets if MULTICLASS else 2
         self.n_hidden = n_hidden
-        self.inputs = Input(shape=(self.n_inputs,1,), name='input')
+        self.inputs = Input(shape=(1,self.tX.shape[2]), name='input')
         h = self.inputs
         
         NPARTS=20
@@ -191,7 +208,7 @@ class ClassModelGRU(object):
     def trainGRU(self, samples):
 
         history = self.model.fit(self.tX, self.tY, sample_weight=self.tW, 
-                                 batch_size=50, epochs=30, shuffle=True,
+                                 batch_size=1000, epochs=10, shuffle=True,
                                  validation_data=(self.vX, self.vY, self.vW))
         with open('history.log','w') as flog:
             history = history.history
@@ -222,8 +239,6 @@ def plot(binning, fn, samples, outpath, xlabel=None, ylabel=None):
     hists = {}
 
     for s in samples:
-        print "Printint sample"
-        print s.name
         h = utils.NH1(binning)
         if type(fn) == int:
             h.fill_array(s.X[s.vidx,fn], weights=s.W[s.vidx])
@@ -258,6 +273,7 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--dense', action='store_true')
     parser.add_argument('--gru', action='store_true')
+    parser.add_argument('--model', type=str, default='dense')
     parser.add_argument('--train', action='store_true')
     parser.add_argument('--plot', action='store_true')
     parser.add_argument('--version', type=int, default=0)
@@ -279,7 +295,7 @@ if __name__ == '__main__':
     #[s.standardize(mu, std) for s in samples]
 
 
-    if args.dense:
+    if 'dense' in args.model:
         model = ClassModelDense(n_inputs, n_hidden, len(samples),samples)
         if args.train:
             print 'Training dense...'
@@ -290,7 +306,7 @@ if __name__ == '__main__':
             print 'Loading dense...'
             model.load_model(modeldir+'weights_dense.h5')
 
-    if args.gru:
+    if 'gru' in args.model:
         model = ClassModelGRU(n_inputs, n_hidden, len(samples),samples)
         if args.train:
             print 'Training gru...'
@@ -323,7 +339,7 @@ if __name__ == '__main__':
             for i in xrange(len(samples) if MULTICLASS else 2):
                 roccer_hists = plot(np.linspace(0, 1, 50), 
                      lambda s, i=i : s.Yhat[s.vidx,i],
-                     samples, figsdir+'class_%i'%i, xlabel='Class %i DNN'%i)
+                     samples, figsdir+'class_%i_%s'%(i,args.model), xlabel='Class %i %s'%(i,args.model))
   
 
                 for idx,num in roccer_vars_n.iteritems():
@@ -335,21 +351,21 @@ if __name__ == '__main__':
             r1 = utils.Roccer(y_range=range(0,1),axis=[0,1,0,1])
             r1.clear()
             print roccer_hists
-            sig_hists = {'DNN':roccer_hists['VectorDiJet115'],
+            sig_hists = {args.model:roccer_hists['VectorDiJet115'],
                 'N2':roccer_hists_n['N2']['VectorDiJet115']}
                 #'D2':roccer_hists_n['D2']['VectorDiJet115'],
                 #'M2':roccer_hists_n['M2']['VectorDiJet115']}
 
-            bkg_hists = {'DNN':roccer_hists['QCD'],
+            bkg_hists = {args.model:roccer_hists['QCD'],
                 'N2':roccer_hists_n['N2']['QCD']}
                 #'D2':roccer_hists_n['D2']['QCD'],
                 #'M2':roccer_hists_n['M2']['QCD']}
 
             r1.add_vars(sig_hists,           
                         bkg_hists,
-                        {'DNN':'DNN',
+                        {args.model:args.model,
                          'N2':'N2'}
                          #'M2':'M2',
                          #'D2':'D2'}
             )
-            r1.plot(figsdir+'class_%s_ROC'%str(args.version))
+            r1.plot(figsdir+'class_%s_%sROC'%(str(args.version),args.model))
