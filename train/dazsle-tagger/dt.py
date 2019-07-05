@@ -23,8 +23,8 @@ MULTICLASS = False
 REGRESSION = False
 np.random.seed(5)
 
-basedir = '/eos/uscms/store/group/lpcbacon/jkrupa/Jun28_1/'
-Nqcd = 50000
+basedir = '/eos/uscms/store/group/lpcbacon/jkrupa/Jul5/'
+Nqcd = 80000
 def _make_parent(path):
     os.system('mkdir -p %s'%('/'.join(path.split('/')[:-1])))
 
@@ -91,7 +91,7 @@ class ClassModelDense(object):
         h = self.inputs
         h = BatchNormalization(momentum=0.6)(h)
         for _ in xrange(n_hidden-1):
-            h = Dense(int(n_inputs*0.1), activation='relu')(h)
+            h = Dense(int(n_inputs*0.05), activation='relu')(h)
             h = BatchNormalization()(h)
         h = Dense(int(n_inputs*0.1), activation='tanh')(h)
         h = BatchNormalization()(h)
@@ -130,7 +130,7 @@ class ClassModelDense(object):
     def trainDense(self, samples):
 
         history = self.model.fit(self.tX, self.tY, sample_weight=self.tW, 
-                                 batch_size=1000, epochs=10, shuffle=True,
+                                 batch_size=1000, epochs=40, shuffle=True,
                                  validation_data=(self.vX, self.vY, self.vW))
         with open('history.log','w') as flog:
             history = history.history
@@ -284,10 +284,10 @@ if __name__ == '__main__':
     figsdir = 'plots/%s/'%(args.version)
     modeldir = 'models/evt/v%i/'%(args.version)
 
-    samples = ['VectorDiJet115','QCD']
+    samples = ['VectorDiJet','QCD']
     samples = [Sample(s, basedir, len(samples)) for s in samples]
     n_inputs = samples[0].X.shape[1]
-    print(samples[0].X.shape[0], samples[1].X.shape[0])
+    print('# sig: ',samples[0].X.shape[0], '#bkg: ',samples[1].X.shape[0])
     n_hidden = 3
 
     #print 'Standardizing...'
@@ -332,9 +332,7 @@ if __name__ == '__main__':
         else:
             roccer_hists = {}
             roccer_hists_n = {}
-            roccer_vars_n = {#'D2':0, 
-                             'N2':1}
-                             #'M2':2}
+            roccer_vars_n = {'N2':1}
 
             for i in xrange(len(samples) if MULTICLASS else 2):
                 roccer_hists = plot(np.linspace(0, 1, 50), 
@@ -351,21 +349,15 @@ if __name__ == '__main__':
             r1 = utils.Roccer(y_range=range(0,1),axis=[0,1,0,1])
             r1.clear()
             print roccer_hists
-            sig_hists = {args.model:roccer_hists['VectorDiJet115'],
-                'N2':roccer_hists_n['N2']['VectorDiJet115']}
-                #'D2':roccer_hists_n['D2']['VectorDiJet115'],
-                #'M2':roccer_hists_n['M2']['VectorDiJet115']}
+            sig_hists = {args.model:roccer_hists['VectorDiJet'],
+                'N2':roccer_hists_n['N2']['VectorDiJet']}
 
             bkg_hists = {args.model:roccer_hists['QCD'],
                 'N2':roccer_hists_n['N2']['QCD']}
-                #'D2':roccer_hists_n['D2']['QCD'],
-                #'M2':roccer_hists_n['M2']['QCD']}
 
             r1.add_vars(sig_hists,           
                         bkg_hists,
                         {args.model:args.model,
                          'N2':'N2'}
-                         #'M2':'M2',
-                         #'D2':'D2'}
             )
             r1.plot(figsdir+'class_%s_%sROC'%(str(args.version),args.model))
