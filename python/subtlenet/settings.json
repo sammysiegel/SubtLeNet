@@ -1,0 +1,22 @@
+{
+    "base": "/eos/uscms/store/user/rbisnath",
+    "samples": [
+    {
+            "name": "HToTauTau",
+	        "samples": ["HToTauTau_merged"]
+		},
+		{
+		    "name": "HToWWToLNuQQ",
+		        "samples": ["HToWWToLNuQQ"]
+        	}
+		,{
+		"name": "Background",
+		"samples": ["QCD_HT1000to1500"]
+    }
+    ],
+    "features": [],
+    "weight": "mu0_pt",
+    "cut": "fj_pt>400 && fj_msd>40",
+    "substructure_vars": ["fj_N2sdb1"],
+    "default": "npu"
+}
