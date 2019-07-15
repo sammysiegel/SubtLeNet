@@ -1,0 +1,26 @@
+{
+    "base": "/eos/uscms/store/user/rbisnath",
+    "samples": [
+    {
+            "name": "HToTauTau",
+	        "samples": ["HToTauTau_merged"]
+		},
+		{
+		    "name": "HToWW",
+		        "samples": ["HToWWToLNuQQ"]
+        	},
+		{
+		"name":"BGHToWW",
+		"samples": ["BGHtoWW_merged"]
+		},
+		{
+		"name": "Background",
+		"samples": ["QCD_HT1000to1500"]
+    }
+    ],
+    "features": ["fj_cpf_pt", "fj_cpf_pup", "fj_pt"],
+    "weight": "mu0_pt",
+    "cut": "(df.fj_pt > 400)",
+    "substructure_vars": ["fj_N2sdb1"],
+    "default": "fj_cpf_pt"
+}

@@ -3,7 +3,7 @@ import os
 import json
 import uproot
 import numpy as np
-from collections import defaultdict
+import pandas as pd
 
 # grabbing command line args
 parser = argparse.ArgumentParser()
@@ -47,7 +47,7 @@ keys = trees[0].keys()
 if features == []:
     try:
         default
-    except NameError:
+    except ValueError:
         print 'no default provided'
     as_dict = trees[0].arrays(keys)
     default_shape = as_dict[default].shape
@@ -59,50 +59,31 @@ if features == []:
             #print 'appending^'
             features.append(k)
 
-#print features
+#mask = pd.Series()  
+def get_branches_as_df(branches, mode):
+    dfs = [tree.pandas.df(branches=branches) for tree in trees]
+    df = pd.concat(dfs)
+    global mask
+    if mode=='features': #the first call to this function must have mode=features for everything to work
+        #mask = eval(cut).bool()
+        df = df[eval(cut)]
+    #print df.head()
+    return df.reset_index()
+       
 
-#takes a list of dictionaries and returns a single dictionary
-def merge_dicts(dicts):
-    if len(dicts) == 1:
-        return dicts[0]
-    merged = defaultdict(list)
-    for d in dicts:
-        for k, v in d.iteritems():
-            merged[k].append(v)
-    for k, v in merged.iteritems():
-        merged[k] = np.concatenate(v)
-    return dict(merged)
+X = get_branches_as_df(features, 'features')
+W = get_branches_as_df([weight], 'weight')
+Y = pd.DataFrame(data=y*np.ones(shape=W.shape))
+substructure = get_branches_as_df(substructure_vars, 'substructure')
 
-def get_branches_as_np(branches, mode):
-    dict_ = merge_dicts([tree.arrays(branches) for tree in trees])
-    #print '\n', dict_.values(), type(dict_.values())
-    values = np.array(dict_.values())
-    if mode == 'features' and values.ndim > 2:
-        values = np.swapaxes(values,1,2)
-    elif mode == 'features':
-        pass
-    elif mode == 'weight':
-        values = values.flatten()
-    elif mode != 'substructure':
-        raise ValueError('Unrecgognized mode passed to get_branches_as_np')
-    #print '\n mode=', mode, '\n', values, '\n', values.shape
-    return values
-        
+# writing to .pkl files
 
-X = get_branches_as_np(features, 'features')
-W = get_branches_as_np([weight], 'weight')
-Y = y * np.ones(shape=W.shape)
-substructure = get_branches_as_np(substructure_vars, 'substructure')
-
-# writing to .npy files
-
-def save(arr, label):
-    fout = args.out+'/'+args.name+'_'+label+'.npy'
-    np.save(fout, arr)
+def save(df, label):
+    fout = args.out+'/'+args.name+'_'+label+'.pkl'
+    df.to_pickle(fout)
 
 save(X, 'x')
 save(Y, 'y')
 save(W, 'w')
 save(substructure, 'ss_vars')
-save(keys, 'all_keys')
-save(features, 'used_keys')
+

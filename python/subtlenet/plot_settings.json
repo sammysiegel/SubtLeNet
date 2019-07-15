@@ -1,0 +1,9 @@
+{
+	"base_dir": "/uscms/home/rbisnath/nobackup/training_plots/2019-05-28-lpchats-numpy-uproot-awkward/pkl_files/per_part/",
+	"filenames": {
+			"HToTauTau":"HToTauTau_x",
+			"BGHToWW":"BGHToWW_x",
+			"Bkg":"Background_x"
+		      },
+	"max_zscore": 3
+}
