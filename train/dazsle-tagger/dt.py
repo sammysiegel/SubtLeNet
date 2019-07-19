@@ -14,6 +14,7 @@ import keras.backend as K
 from tensorflow.python.framework import graph_util, graph_io
 import os, sys
 import numpy as np
+import pandas as pd
 from collections import namedtuple
 
 import subtlenet.utils as utils 
@@ -23,7 +24,7 @@ MULTICLASS = False
 REGRESSION = False
 np.random.seed(5)
 
-basedir = '/eos/uscms/store/group/lpcbacon/jkrupa/Jul5/'
+basedir = '/uscms/home/rbisnath/nobackup/training_plots/2019-05-28-lpchats-numpy-uproot-awkward/pkl_files'
 Nqcd = 80000
 def _make_parent(path):
     os.system('mkdir -p %s'%('/'.join(path.split('/')[:-1])))
@@ -32,35 +33,37 @@ class Sample(object):
     def __init__(self, name, base, max_Y):
         self.name = name 
  
-        if 'QCD' in name:        self.X = np.load('%s/%s_%s.npy'%(base, name, 'x'))[:Nqcd]
-        else:                    self.X = np.load('%s/%s_%s.npy'%(base, name, 'x'))
-        if 'QCD' in name:        self.N2 = np.load('%s/%s_%s.npy'%(base, name, 'ss_vars'))[:Nqcd]
-        else:                    self.N2 = np.load('%s/%s_%s.npy'%(base, name, 'ss_vars'))
+        if 'Background' in name:        self.X = pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'x')).values[:Nqcd]
+        else:                    self.X = pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'x')).values
+        if 'Background' in name:        self.N2 = pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'ss_vars')).values[:Nqcd]
+        else:                    self.N2 = pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'ss_vars')).values
 
 
         if REGRESSION:
-            self.Y = np.load('%s/%s_%s.npy'%(base, name, 'y'))
+            self.Y = pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'y')).values[:,:1]
         else:
             if MULTICLASS:
                 self.Y = np_utils.to_categorical(
-                            np.load('%s/%s_%s.npy'%(base, name, 'y')),
+                            pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'y')).values[:,:1],
                             max_Y
                         )
             else:
-              if 'QCD' in name:
+              if 'Background' in name:
                 self.Y = np_utils.to_categorical(
-                            (np.load('%s/%s_%s.npy'%(base, name, 'y'))[:Nqcd] > 0).astype(np.int),
+                            (pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'y')).values[:Nqcd,:1] > 0).astype(np.int),
                             2
                         )
               else:
                 self.Y = np_utils.to_categorical(
-                            (np.load('%s/%s_%s.npy'%(base, name, 'y')) > 0).astype(np.int),
+                            (pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'y')).values[:,:1] > 0).astype(np.int),
                             2
                         )
  
-        if 'QCD' in name: self.W = np.load('%s/%s_%s.npy'%(base, name, 'w'))[:Nqcd]
-        else:             self.W = np.load('%s/%s_%s.npy'%(base, name, 'w'))
-        self.idx = np.random.permutation(self.Y.shape[0])
+        if 'Background' in name: self.W = pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'w')).values.flatten()[:Nqcd]
+        else:             self.W = pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'w')).values.flatten()
+        self.idx = np.random.permutation(self.X.shape[0]) #(self.Y.shape[0]) 
+        #print 'self.name + idx: ', self.name, self.idx
+        #print 'self.X.shape, self.Y.shape:', self.X.shape, self.Y.shape
     @property
     def tidx(self):
         if VALSPLIT == 1 or VALSPLIT == 0:
@@ -91,7 +94,7 @@ class ClassModelDense(object):
         h = self.inputs
         h = BatchNormalization(momentum=0.6)(h)
         for _ in xrange(n_hidden-1):
-            h = Dense(int(n_inputs*0.05), activation='relu')(h)
+            h = Dense(int(n_inputs), activation='relu')(h)
             h = BatchNormalization()(h)
         h = Dense(int(n_inputs*0.1), activation='tanh')(h)
         h = BatchNormalization()(h)
@@ -121,13 +124,21 @@ class ClassModelDense(object):
             self.vY = np.vstack([s.Y[s.vidx] for s in samples])
             self.tN2 = np.vstack([s.N2[s.tidx] for s in samples])
             self.vN2 = np.vstack([s.N2[s.vidx] for s in samples])
-        if not REGRESSION:
-            for i in xrange(self.tY.shape[1]):
-                tot = np.sum(self.tW[self.tY[:,i] == 1])
-                self.tW[self.tY[:,i] == 1] *= 100/tot
-                self.vW[self.vY[:,i] == 1] *= 100/tot
+        #if not REGRESSION:
+            #print '\n self.tY:', self.tY[:,0] != 0
+            #print '\n self.tW:', self.tW
+            #for i in xrange(self.tY.shape[1]):
+                #tot = np.sum(self.tW[self.tY[:,i] != 0])
+                #print 'tot:', tot
+                #self.tW[self.tY[:,i] != 0] *= 100/tot
+                #self.vW[self.vY[:,i] != 0] *= 100/tot
 
     def trainDense(self, samples):
+        #print "tX.shp, tY.shp: ", self.tX.shape, self.tY.shape
+        #print "vX.shp, vY.shp, vW.shp:", self.vX.shape, self.vY.shape, self.vW.shape
+        print '\ntW: ', self.tW, '\n', np.isnan(self.tW)
+        from functools import reduce
+        print '\n', reduce((lambda a,b : a or b), np.isnan(self.tW))
 
         history = self.model.fit(self.tX, self.tY, sample_weight=self.tW, 
                                  batch_size=1000, epochs=40, shuffle=True,
@@ -273,7 +284,7 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--dense', action='store_true')
     parser.add_argument('--gru', action='store_true')
-    parser.add_argument('--model', type=str, default='dense')
+    parser.add_argument('--model', type=str, default='DNN')
     parser.add_argument('--train', action='store_true')
     parser.add_argument('--plot', action='store_true')
     parser.add_argument('--version', type=int, default=0)
@@ -284,11 +295,13 @@ if __name__ == '__main__':
     figsdir = 'plots/%s/'%(args.version)
     modeldir = 'models/evt/v%i/'%(args.version)
 
-    samples = ['VectorDiJet','QCD']
+    samples = ['BGHToWW','Background']
     samples = [Sample(s, basedir, len(samples)) for s in samples]
     n_inputs = samples[0].X.shape[1]
     print('# sig: ',samples[0].X.shape[0], '#bkg: ',samples[1].X.shape[0])
     n_hidden = 3
+
+    #for s in samples: print s.name, 'tidx.shape + vidx.shape: ', s.tidx.shape, s.vidx.shape
 
     #print 'Standardizing...'
     #mu, std = get_mu_std(samples)
@@ -349,11 +362,11 @@ if __name__ == '__main__':
             r1 = utils.Roccer(y_range=range(0,1),axis=[0,1,0,1])
             r1.clear()
             print roccer_hists
-            sig_hists = {args.model:roccer_hists['VectorDiJet'],
-                'N2':roccer_hists_n['N2']['VectorDiJet']}
+            sig_hists = {args.model:roccer_hists['BGHToWW'],
+                'N2':roccer_hists_n['N2']['BGHToWW']}
 
-            bkg_hists = {args.model:roccer_hists['QCD'],
-                'N2':roccer_hists_n['N2']['QCD']}
+            bkg_hists = {args.model:roccer_hists['Background'],
+                'N2':roccer_hists_n['N2']['Background']}
 
             r1.add_vars(sig_hists,           
                         bkg_hists,

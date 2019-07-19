@@ -25,6 +25,7 @@ with open(args.json) as jsonfile:
     basedir = payload['base']
     features = payload['features']
     weight = payload['weight']
+    cut_vars = payload['cut_vars']
     cut = payload['cut']
     substructure_vars = payload['substructure_vars']
     default = payload['default']
@@ -41,7 +42,7 @@ files = [uproot.open(f) for f in filenames]
 trees = [f['Events'] for f in files]
 keys = trees[0].keys()
 #uncomment the line below to see what keys will be accepted for features/defualts in the json
-#print '\n Keys: \n', keys, type(keys)
+#print '\n Keys: \n', keys[:20], type(keys)
 
 #if no features are provided, want to grab features w same number of entries as the default
 if features == []:
@@ -67,11 +68,17 @@ def get_branches_as_df(branches, mode):
     if mode=='features': #the first call to this function must have mode=features for everything to work
         #mask = eval(cut).bool()
         df = df[eval(cut)]
-    #print df.head()
-    return df.reset_index()
+    print "in get_branches; mode: "+mode+"\n", df.head()
+    return df.reset_index(drop=True)
        
-
-X = get_branches_as_df(features, 'features')
+in_cut_vars_only = list(set(cut_vars) - set(features))
+#print "features: ", features, '\n'
+#print "in_cut_vars_only: ", in_cut_vars_only, '\n'
+print "\n branches used for x: ", features + in_cut_vars_only, '\n'
+X = get_branches_as_df(features + in_cut_vars_only, 'features')
+print list(X.columns)
+X = X.drop(in_cut_vars_only, axis=1)
+print '\n\n\n', list(X.columns)
 W = get_branches_as_df([weight], 'weight')
 Y = pd.DataFrame(data=y*np.ones(shape=W.shape))
 substructure = get_branches_as_df(substructure_vars, 'substructure')
@@ -81,6 +88,8 @@ substructure = get_branches_as_df(substructure_vars, 'substructure')
 def save(df, label):
     fout = args.out+'/'+args.name+'_'+label+'.pkl'
     df.to_pickle(fout)
+    #print '\n'+label+'\n', df.shape, '\n'
+    #print df.head()
 
 save(X, 'x')
 save(Y, 'y')
