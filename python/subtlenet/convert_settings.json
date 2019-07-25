@@ -18,10 +18,13 @@
 		"samples": ["QCD_HT1000to1500"]
     }
     ],
-    "features": ["fj_cpf_pt","fj_cpf_eta","fj_cpf_dz","fj_cpf_eta","fj_cpf_phi","fj_cpf_pup","fj_cpf_q","fj_cpf_vtxID","fj_ipf_pt","fj_ipf_eta","fj_ipf_dz","fj_ipf_eta","fj_ipf_phi","fj_ipf_pup"],
+    "features": ["fj_cpf_pt", "fj_cpf_eta", "fj_cpf_dz", "fj_cpf_eta", "fj_cpf_phi", "fj_cpf_pup", "fj_cpf_q", "fj_cpf_vtxID", "fj_ipf_pt", "fj_ipf_eta", "fj_ipf_dz", "fj_ipf_eta", "fj_ipf_phi", "fj_ipf_pup", "fj_cpf_pfType"],
+    "!features": ["pfmet", "pfmetphi", "fj_D2b1", "fj_N2b1", "fj_lepCPt", "fj_mass", "fj_pt", "fj_msd", "fj_nProngs", "fj_partonPt", "fj_tau21", "fj_tau41", "n_cpf", "n_ipf", "n_sv"],
     "weight": "sf_ptWeight",
     "cut_vars": ["fj_pt", "fj_msd", "fj_nProngs"],
     "cut": "(df.fj_pt > 400) & (df.fj_msd > 40) & (df.fj_nProngs == 2)",
     "substructure_vars": ["fj_N2sdb1"],
-    "default": "fj_cpf_pt"
+    "default": "fj_cpf_pt",
+    "per_part": 1,
+    "nparticles": 50
 }

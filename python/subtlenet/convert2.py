@@ -4,6 +4,7 @@ import json
 import uproot
 import numpy as np
 import pandas as pd
+import re
 
 # grabbing command line args
 parser = argparse.ArgumentParser()
@@ -29,12 +30,18 @@ with open(args.json) as jsonfile:
     cut = payload['cut']
     substructure_vars = payload['substructure_vars']
     default = payload['default']
+    per_part = bool(payload['per_part'])
+    print "per_part: ", per_part
+    nparticles = payload['nparticles']
 
     y = 0
     for sample in payload['samples']:
         y += 1
         if sample['name'] == args.name:
             samples = sample['samples']
+    
+    in_cut_vars_only = list(set(cut_vars) - set(features))
+
 
 # reading from the root files
 filenames = [basedir+'/'+sample+'.root' for sample in samples]
@@ -60,36 +67,72 @@ if features == []:
             #print 'appending^'
             features.append(k)
 
-#mask = pd.Series()  
+# takes a dict produced by tree.arrays and reformats it
+# the input dict has var names for keys, and 2d (evt and particle) arrays for values
+# the output dict has keys like 'fj_cpf_pt[0]' and 1d arrays (evt) for values
+def reformat_dict(d):
+    ks = []
+    vs = []
+
+    for k, v in d.iteritems():
+        if v.ndim == 1:
+            ks.append(k)
+            vs.append(v)
+        elif v.ndim == 2:
+            for i in range(nparticles):
+                ks.append(k+"[{}]".format(i))
+                vs.append([v[j][i] for j in range(len(v))])
+        else:
+            raise ValueError("Too many dimensions")
+
+    new_dict = dict(zip(ks, vs))
+    return new_dict
+
+
 def get_branches_as_df(branches, mode):
-    dfs = [tree.pandas.df(branches=branches) for tree in trees]
+    dicts = [tree.arrays(branches=branches) for tree in trees] 
+    if per_part:
+        dicts = [reformat_dict(d) for d in dicts]
+
+    dfs = [pd.DataFrame.from_dict(d) for d in dicts]
     df = pd.concat(dfs)
-    global mask
-    if mode=='features': #the first call to this function must have mode=features for everything to work
-        #mask = eval(cut).bool()
+    #print mode, '\n', df.head()
+    if mode=='features': 
+        #the first call to this function must have mode=features for everything to work
         df = df[eval(cut)]
-    print "in get_branches; mode: "+mode+"\n", df.head()
     return df.reset_index(drop=True)
-       
-in_cut_vars_only = list(set(cut_vars) - set(features))
-#print "features: ", features, '\n'
-#print "in_cut_vars_only: ", in_cut_vars_only, '\n'
-print "\n branches used for x: ", features + in_cut_vars_only, '\n'
+
+
+# unpacking the branches into x, y, weight and substructure vars       
 X = get_branches_as_df(features + in_cut_vars_only, 'features')
-print list(X.columns)
-X = X.drop(in_cut_vars_only, axis=1)
-print '\n\n\n', list(X.columns)
+#print "X before: ", X.shape, '\n', X.head()
+#print list(X.columns)
+
+def is_extra(s):
+    m = re.search(r"\d+", s)
+    if m:
+        return int(m.group(0)) >= nparticles
+    return True
+
+if per_part:
+    extra_columns = list(filter(is_extra, list(X.columns)))
+    weird_columns = list(filter(lambda s: "fj_pt" in s, list(X.columns)))
+    X = X.drop(in_cut_vars_only + weird_columns + extra_columns, axis=1)
+else:
+    X = X.drop(in_cut_vars_only, axis=1)
+
+#print '\n\n\n', list(X.columns)
+#print "dtypes: ", X.dtypes
 W = get_branches_as_df([weight], 'weight')
 Y = pd.DataFrame(data=y*np.ones(shape=W.shape))
 substructure = get_branches_as_df(substructure_vars, 'substructure')
 
 # writing to .pkl files
-
 def save(df, label):
     fout = args.out+'/'+args.name+'_'+label+'.pkl'
     df.to_pickle(fout)
-    #print '\n'+label+'\n', df.shape, '\n'
-    #print df.head()
+    print '\n'+label+'\n', df.shape, '\n'
+    print df.head()
 
 save(X, 'x')
 save(Y, 'y')

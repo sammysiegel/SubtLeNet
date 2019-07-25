@@ -1,9 +1,12 @@
 {
-	"base_dir": "/uscms/home/rbisnath/nobackup/training_plots/2019-05-28-lpchats-numpy-uproot-awkward/pkl_files/per_part/",
+	"base_dir": "/uscms/home/rbisnath/nobackup/pkl_files/",
 	"filenames": {
-			"HToTauTau":"HToTauTau_x",
 			"BGHToWW":"BGHToWW_x",
 			"Bkg":"Background_x"
 		      },
-	"max_zscore": 3
+	"maxz": 3,
+	"per_part": 1,
+	"jet_cut": "df.fj_pt > 200",
+	"cut_vars": ["fj_cpf_pfType"],
+	"particle_cuts": ["np.abs(df['{}']) == 211"]
 }
