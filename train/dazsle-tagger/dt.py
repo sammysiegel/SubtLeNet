@@ -24,7 +24,7 @@ MULTICLASS = False
 REGRESSION = False
 np.random.seed(5)
 
-basedir = '/uscms/home/rbisnath/nobackup/training_plots/2019-05-28-lpchats-numpy-uproot-awkward/pkl_files'
+basedir = '/uscms/home/rbisnath/nobackup/pkl_files'
 Nqcd = 80000
 def _make_parent(path):
     os.system('mkdir -p %s'%('/'.join(path.split('/')[:-1])))
@@ -35,8 +35,8 @@ class Sample(object):
  
         if 'Background' in name:        self.X = pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'x')).values[:Nqcd]
         else:                    self.X = pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'x')).values
-        if 'Background' in name:        self.N2 = pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'ss_vars')).values[:Nqcd]
-        else:                    self.N2 = pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'ss_vars')).values
+        if 'Background' in name:        self.lsf = pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'ss_vars')).values[:Nqcd]
+        else:                    self.lsf = pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'ss_vars')).values
 
 
         if REGRESSION:
@@ -122,8 +122,8 @@ class ClassModelDense(object):
         else:
             self.tY = np.vstack([s.Y[s.tidx] for s in samples])
             self.vY = np.vstack([s.Y[s.vidx] for s in samples])
-            self.tN2 = np.vstack([s.N2[s.tidx] for s in samples])
-            self.vN2 = np.vstack([s.N2[s.vidx] for s in samples])
+            self.tlsf = np.vstack([s.lsf[s.tidx] for s in samples])
+            self.vlsf = np.vstack([s.lsf[s.vidx] for s in samples])
         #if not REGRESSION:
             #print '\n self.tY:', self.tY[:,0] != 0
             #print '\n self.tW:', self.tW
@@ -208,8 +208,8 @@ class ClassModelGRU(object):
 
         self.tY = np.vstack([s.Y[s.tidx] for s in samples])
         self.vY = np.vstack([s.Y[s.vidx] for s in samples])
-        self.tN2 = np.vstack([s.N2[s.tidx] for s in samples])
-        self.vN2 = np.vstack([s.N2[s.vidx] for s in samples])
+        self.tlsf = np.vstack([s.lsf[s.tidx] for s in samples])
+        self.vlsf = np.vstack([s.lsf[s.vidx] for s in samples])
         if not REGRESSION:
             for i in xrange(self.tY.shape[1]):
                 tot = np.sum(self.tW[self.tY[:,i] == 1])
@@ -279,6 +279,52 @@ def get_mu_std(samples):
     std = np.std(X, axis=0)
     return mu, std
 
+def make_plots(samples):
+        for s in samples:
+            s.infer(model)
+
+        samples.reverse()
+        if REGRESSION:
+            plot(np.linspace(60, 160, 20),
+                 lambda s : s.Yhat[s.vidx][:,0],
+                 samples, figsdir+'mass_regressed', xlabel='Regressed mass')
+            plot(np.linspace(60, 160, 20),
+                 lambda s : s.Y[s.vidx],
+                 samples, figsdir+'mass_truth', xlabel='True mass')
+        else:
+            roccer_hists = {}
+            roccer_hists_n = {}
+            roccer_vars_n = {'lsf':1}
+
+            for i in xrange(len(samples) if MULTICLASS else 2):
+                roccer_hists = plot(np.linspace(0, 1, 50), 
+                     lambda s, i=i : s.Yhat[s.vidx,i],
+                     samples, figsdir+'class_%i_%s'%(i,args.model), xlabel='Class %i %s'%(i,args.model))
+  
+
+                for idx,num in roccer_vars_n.iteritems():
+                     roccer_hists_n[idx] = plot(np.linspace(0,1,50),
+                     lambda s: s.lsf[s.vidx,0], ###
+                     samples, figsdir+'class_%i_%s'%(i,idx), xlabel='Class %i %s'%(i,idx))
+
+
+            r1 = utils.Roccer(y_range=range(0,1),axis=[0,1,0,1])
+            r1.clear()
+            print roccer_hists
+            sig_hists = {args.model:roccer_hists['BGHToWW'],
+                'lsf':roccer_hists_n['lsf']['BGHToWW']}
+
+            bkg_hists = {args.model:roccer_hists['Background'],
+                'lsf':roccer_hists_n['lsf']['Background']}
+
+            r1.add_vars(sig_hists,           
+                        bkg_hists,
+                        {args.model:args.model,
+                         'lsf':'lsf'}
+            )
+            r1.plot(figsdir+'class_%s_%sROC'%(str(args.version),args.model))
+
+
 if __name__ == '__main__':
     from argparse import ArgumentParser
     parser = ArgumentParser()
@@ -331,46 +377,4 @@ if __name__ == '__main__':
             model.load_model(modeldir+'weights_gru.h5')
 
     if args.plot:
-        for s in samples:
-            s.infer(model)
-
-        samples.reverse()
-        if REGRESSION:
-            plot(np.linspace(60, 160, 20),
-                 lambda s : s.Yhat[s.vidx][:,0],
-                 samples, figsdir+'mass_regressed', xlabel='Regressed mass')
-            plot(np.linspace(60, 160, 20),
-                 lambda s : s.Y[s.vidx],
-                 samples, figsdir+'mass_truth', xlabel='True mass')
-        else:
-            roccer_hists = {}
-            roccer_hists_n = {}
-            roccer_vars_n = {'N2':1}
-
-            for i in xrange(len(samples) if MULTICLASS else 2):
-                roccer_hists = plot(np.linspace(0, 1, 50), 
-                     lambda s, i=i : s.Yhat[s.vidx,i],
-                     samples, figsdir+'class_%i_%s'%(i,args.model), xlabel='Class %i %s'%(i,args.model))
-  
-
-                for idx,num in roccer_vars_n.iteritems():
-                     roccer_hists_n[idx] = plot(np.linspace(0,1,50),
-                     lambda s: s.N2[s.vidx,0],
-                     samples, figsdir+'class_%i_%s'%(i,idx), xlabel='Class %i %s'%(i,idx))
-
-
-            r1 = utils.Roccer(y_range=range(0,1),axis=[0,1,0,1])
-            r1.clear()
-            print roccer_hists
-            sig_hists = {args.model:roccer_hists['BGHToWW'],
-                'N2':roccer_hists_n['N2']['BGHToWW']}
-
-            bkg_hists = {args.model:roccer_hists['Background'],
-                'N2':roccer_hists_n['N2']['Background']}
-
-            r1.add_vars(sig_hists,           
-                        bkg_hists,
-                        {args.model:args.model,
-                         'N2':'N2'}
-            )
-            r1.plot(figsdir+'class_%s_%sROC'%(str(args.version),args.model))
+        make_plots(samples)

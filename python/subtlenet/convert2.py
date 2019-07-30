@@ -27,7 +27,11 @@ with open(args.json) as jsonfile:
     features = payload['features']
     weight = payload['weight']
     cut_vars = payload['cut_vars']
-    cut = payload['cut']
+    #cut = payload['cut']
+    if "Background" in args.name:
+        cut = payload['background_cut']
+    else:
+        cut = payload['signal_cut']
     substructure_vars = payload['substructure_vars']
     default = payload['default']
     per_part = bool(payload['per_part'])
@@ -49,7 +53,7 @@ files = [uproot.open(f) for f in filenames]
 trees = [f['Events'] for f in files]
 keys = trees[0].keys()
 #uncomment the line below to see what keys will be accepted for features/defualts in the json
-#print '\n Keys: \n', keys[:20], type(keys)
+#print '\n Keys: \n', keys, type(keys)
 
 #if no features are provided, want to grab features w same number of entries as the default
 if features == []:
@@ -88,20 +92,22 @@ def reformat_dict(d):
     new_dict = dict(zip(ks, vs))
     return new_dict
 
-
 def get_branches_as_df(branches, mode):
     dicts = [tree.arrays(branches=branches) for tree in trees] 
     if per_part:
         dicts = [reformat_dict(d) for d in dicts]
-
-    dfs = [pd.DataFrame.from_dict(d) for d in dicts]
+    dfs = [pd.DataFrame.from_dict(d, dtype=np.float16) for d in dicts]
+  
     df = pd.concat(dfs)
+
+    #df = pd.DataFrame(dicts)
+
     #print mode, '\n', df.head()
-    if mode=='features': 
+    if mode=='features' and cut: 
         #the first call to this function must have mode=features for everything to work
+        print "cut:", cut
         df = df[eval(cut)]
     return df.reset_index(drop=True)
-
 
 # unpacking the branches into x, y, weight and substructure vars       
 X = get_branches_as_df(features + in_cut_vars_only, 'features')

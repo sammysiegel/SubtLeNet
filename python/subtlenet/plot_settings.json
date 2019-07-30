@@ -4,9 +4,9 @@
 			"BGHToWW":"BGHToWW_x",
 			"Bkg":"Background_x"
 		      },
-	"maxz": 3,
 	"per_part": 1,
+	"combine_particles": 1,
 	"jet_cut": "df.fj_pt > 200",
 	"cut_vars": ["fj_cpf_pfType"],
-	"particle_cuts": ["np.abs(df['{}']) == 211"]
+	"particle_cuts": ["df['{}'] != 0"]
 }
