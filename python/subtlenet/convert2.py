@@ -120,7 +120,7 @@ def get_branches_as_df(branches, mode):
         #the first call to this function must have mode=features for everything to work
         if VERBOSITY != 0: print "cut:", cut
         if VERBOSITY == 2: print "df.shape before cut: ", df.shape
-        df = df[eval(cut)]
+        df = df[eval(cut)].dropna()
         if VERBOSITY == 2: print "df.shape after cut: ", df.shape
         df = df.reset_index()
         global good_indicies 

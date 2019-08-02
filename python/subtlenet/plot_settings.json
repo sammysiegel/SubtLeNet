@@ -1,10 +1,10 @@
 {
-	"base_dir": "/uscms/home/rbisnath/nobackup/pkl_files/",
+	"base_dir": "/uscms/home/rbisnath/nobackup/pkl_files/jet_level",
 	"filenames": {
 			"BGHToWW":"BGHToWW_x",
-			"Bkg":"Background_x"
+			"BGHToZZ":"BGHToZZ_x"
 		      },
-	"per_part": 1,
+	"per_part": 0,
 	"combine_particles": 1,
 	"jet_cut": "df.fj_pt > 200",
 	"cut_vars": ["fj_cpf_pfType"],
