@@ -24,7 +24,7 @@ MULTICLASS = False
 REGRESSION = False
 np.random.seed(5)
 
-basedir = '/uscms/home/rbisnath/nobackup/pkl_files'
+basedir = '/uscms/home/rbisnath/nobackup/pkl_files/jet_level'
 Nqcd = 80000
 def _make_parent(path):
     os.system('mkdir -p %s'%('/'.join(path.split('/')[:-1])))
@@ -33,10 +33,10 @@ class Sample(object):
     def __init__(self, name, base, max_Y):
         self.name = name 
  
-        if 'Background' in name:        self.X = pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'x')).values[:Nqcd]
+        if 'QCD' in name:        self.X = pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'x')).values[:Nqcd]
         else:                    self.X = pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'x')).values
-        if 'Background' in name:        self.lsf = pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'ss_vars')).values[:Nqcd]
-        else:                    self.lsf = pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'ss_vars')).values
+        if 'QCD' in name:        self.N2 = pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'ss_vars')).values[:Nqcd]
+        else:                    self.N2 = pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'ss_vars')).values
 
 
         if REGRESSION:
@@ -48,7 +48,7 @@ class Sample(object):
                             max_Y
                         )
             else:
-              if 'Background' in name:
+              if 'QCD' in name:
                 self.Y = np_utils.to_categorical(
                             (pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'y')).values[:Nqcd,:1] > 0).astype(np.int),
                             2
@@ -59,7 +59,7 @@ class Sample(object):
                             2
                         )
  
-        if 'Background' in name: self.W = pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'w')).values.flatten()[:Nqcd]
+        if 'QCD' in name: self.W = pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'w')).values.flatten()[:Nqcd]
         else:             self.W = pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'w')).values.flatten()
         self.idx = np.random.permutation(self.X.shape[0]) #(self.Y.shape[0]) 
         #print 'self.name + idx: ', self.name, self.idx
@@ -122,8 +122,8 @@ class ClassModelDense(object):
         else:
             self.tY = np.vstack([s.Y[s.tidx] for s in samples])
             self.vY = np.vstack([s.Y[s.vidx] for s in samples])
-            self.tlsf = np.vstack([s.lsf[s.tidx] for s in samples])
-            self.vlsf = np.vstack([s.lsf[s.vidx] for s in samples])
+            self.tN2 = np.vstack([s.N2[s.tidx] for s in samples])
+            self.vN2 = np.vstack([s.N2[s.vidx] for s in samples])
         #if not REGRESSION:
             #print '\n self.tY:', self.tY[:,0] != 0
             #print '\n self.tW:', self.tW
@@ -208,8 +208,8 @@ class ClassModelGRU(object):
 
         self.tY = np.vstack([s.Y[s.tidx] for s in samples])
         self.vY = np.vstack([s.Y[s.vidx] for s in samples])
-        self.tlsf = np.vstack([s.lsf[s.tidx] for s in samples])
-        self.vlsf = np.vstack([s.lsf[s.vidx] for s in samples])
+        self.tN2 = np.vstack([s.N2[s.tidx] for s in samples])
+        self.vN2 = np.vstack([s.N2[s.vidx] for s in samples])
         if not REGRESSION:
             for i in xrange(self.tY.shape[1]):
                 tot = np.sum(self.tW[self.tY[:,i] == 1])
@@ -294,7 +294,7 @@ def make_plots(samples):
         else:
             roccer_hists = {}
             roccer_hists_n = {}
-            roccer_vars_n = {'lsf':1}
+            roccer_vars_n = {'N2':1}
 
             for i in xrange(len(samples) if MULTICLASS else 2):
                 roccer_hists = plot(np.linspace(0, 1, 50), 
@@ -304,7 +304,7 @@ def make_plots(samples):
 
                 for idx,num in roccer_vars_n.iteritems():
                      roccer_hists_n[idx] = plot(np.linspace(0,1,50),
-                     lambda s: s.lsf[s.vidx,0], ###
+                     lambda s: s.N2[s.vidx,0], ###
                      samples, figsdir+'class_%i_%s'%(i,idx), xlabel='Class %i %s'%(i,idx))
 
 
@@ -312,15 +312,15 @@ def make_plots(samples):
             r1.clear()
             print roccer_hists
             sig_hists = {args.model:roccer_hists['BGHToWW'],
-                'lsf':roccer_hists_n['lsf']['BGHToWW']}
+                'N2':roccer_hists_n['N2']['BGHToWW']}
 
-            bkg_hists = {args.model:roccer_hists['Background'],
-                'lsf':roccer_hists_n['lsf']['Background']}
+            bkg_hists = {args.model:roccer_hists['QCD'],
+                'N2':roccer_hists_n['N2']['QCD']}
 
             r1.add_vars(sig_hists,           
                         bkg_hists,
                         {args.model:args.model,
-                         'lsf':'lsf'}
+                         'N2':'N2'}
             )
             r1.plot(figsdir+'class_%s_%sROC'%(str(args.version),args.model))
 
@@ -341,7 +341,7 @@ if __name__ == '__main__':
     figsdir = 'plots/%s/'%(args.version)
     modeldir = 'models/evt/v%i/'%(args.version)
 
-    samples = ['BGHToWW','Background']
+    samples = ['BGHToWW','QCD']
     samples = [Sample(s, basedir, len(samples)) for s in samples]
     n_inputs = samples[0].X.shape[1]
     print('# sig: ',samples[0].X.shape[0], '#bkg: ',samples[1].X.shape[0])
