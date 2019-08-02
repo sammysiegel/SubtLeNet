@@ -14,6 +14,7 @@ import keras.backend as K
 from tensorflow.python.framework import graph_util, graph_io
 import os, sys
 import numpy as np
+import pandas as pd
 from collections import namedtuple
 
 import subtlenet.utils as utils 
@@ -26,31 +27,32 @@ np.random.seed(5)
 basedir = '/eos/uscms/store/user/jkrupa/trainingData/npy/'
 Nqcd = 100000
 Nsig = 100000
+
 def _make_parent(path):
     os.system('mkdir -p %s'%('/'.join(path.split('/')[:-1])))
 
 class Sample(object):
     def __init__(self, name, base, max_Y):
         self.name = name 
+
         self.Yhat = {} 
         if 'QCD' in name:        self.X = np.load('%s/%s_%s.npy'%(base, name, 'x'))[:Nqcd]
         else:                    self.X = np.load('%s/%s_%s.npy'%(base, name, 'x'))[:Nsig]
         if 'QCD' in name:        self.SS = np.load('%s/%s_%s.npy'%(base, name, 'ss_vars'))[:Nqcd]
         else:                    self.SS = np.load('%s/%s_%s.npy'%(base, name, 'ss_vars'))[:Nsig]
 
-
         if REGRESSION:
-            self.Y = np.load('%s/%s_%s.npy'%(base, name, 'y'))
+            self.Y = np.load('%s/%s_%s.npy'%(base, name, 'y'))[:,:1]
         else:
             if MULTICLASS:
                 self.Y = np_utils.to_categorical(
-                            np.load('%s/%s_%s.npy'%(base, name, 'y')),
+                            pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'y')).values[:,:1],
                             max_Y
                         )
             else:
               if 'QCD' in name:
                 self.Y = np_utils.to_categorical(
-                            (np.load('%s/%s_%s.npy'%(base, name, 'y'))[:Nqcd] > 0).astype(np.int),
+                            (pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'y')).values[:Nqcd,:1] > 0).astype(np.int),
                             2
                         )
               else:
@@ -89,6 +91,17 @@ class ClassModel(object):
         self.n_inputs = n_inputs
         self.n_targets = n_targets if MULTICLASS else 2
         self.n_hidden = n_hidden
+
+        self.inputs = Input(shape=(int(n_inputs),), name='input')
+        h = self.inputs
+        h = BatchNormalization(momentum=0.6)(h)
+        for _ in xrange(n_hidden-1):
+            h = Dense(int(n_inputs), activation='relu')(h)
+            h = BatchNormalization()(h)
+        h = Dense(int(n_inputs*0.1), activation='tanh')(h)
+        h = BatchNormalization()(h)
+        if REGRESSION:
+            self.outputs = Dense(1, activation='linear', name='output')(h)
 
         self.tX = np.vstack([s.X[:][s.tidx] for s in samples])
         self.tW = np.concatenate([s.W[s.tidx] for s in samples])
@@ -214,6 +227,52 @@ def get_mu_std(samples):
     std = np.std(X, axis=0)
     return mu, std
 
+def make_plots(samples):
+        for s in samples:
+            s.infer(model)
+
+        samples.reverse()
+        if REGRESSION:
+            plot(np.linspace(60, 160, 20),
+                 lambda s : s.Yhat[s.vidx][:,0],
+                 samples, figsdir+'mass_regressed', xlabel='Regressed mass')
+            plot(np.linspace(60, 160, 20),
+                 lambda s : s.Y[s.vidx],
+                 samples, figsdir+'mass_truth', xlabel='True mass')
+        else:
+            roccer_hists = {}
+            roccer_hists_n = {}
+            roccer_vars_n = {'N2':1}
+
+            for i in xrange(len(samples) if MULTICLASS else 2):
+                roccer_hists = plot(np.linspace(0, 1, 50), 
+                     lambda s, i=i : s.Yhat[s.vidx,i],
+                     samples, figsdir+'class_%i_%s'%(i,args.model), xlabel='Class %i %s'%(i,args.model))
+  
+
+                for idx,num in roccer_vars_n.iteritems():
+                     roccer_hists_n[idx] = plot(np.linspace(0,1,50),
+                     lambda s: s.N2[s.vidx,0], ###
+                     samples, figsdir+'class_%i_%s'%(i,idx), xlabel='Class %i %s'%(i,idx))
+
+
+            r1 = utils.Roccer(y_range=range(0,1),axis=[0,1,0,1])
+            r1.clear()
+            print roccer_hists
+            sig_hists = {args.model:roccer_hists['BGHToWW'],
+                'N2':roccer_hists_n['N2']['BGHToWW']}
+
+            bkg_hists = {args.model:roccer_hists['QCD'],
+                'N2':roccer_hists_n['N2']['QCD']}
+
+            r1.add_vars(sig_hists,           
+                        bkg_hists,
+                        {args.model:args.model,
+                         'N2':'N2'}
+            )
+            r1.plot(figsdir+'class_%s_%sROC'%(str(args.version),args.model))
+
+
 if __name__ == '__main__':
     from argparse import ArgumentParser
     parser = ArgumentParser()
@@ -235,10 +294,13 @@ if __name__ == '__main__':
     models = ['Dense','GRU']
 
     samples = [SIG,BKG]
+
     samples = [Sample(s, basedir, len(samples)) for s in samples]
     n_inputs = samples[0].X.shape[1]
     print n_inputs
     print('# sig: ',samples[0].X.shape[0], '#bkg: ',samples[1].X.shape[0])
+
+    #for s in samples: print s.name, 'tidx.shape + vidx.shape: ', s.tidx.shape, s.vidx.shape
 
     #print 'Standardizing...'
     #mu, std = get_mu_std(samples)
