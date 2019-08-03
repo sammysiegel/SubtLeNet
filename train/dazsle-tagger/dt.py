@@ -41,18 +41,15 @@ class Sample(object):
         if 'QCD' in name:        self.SS = np.load('%s/%s_%s.npy'%(base, name, 'ss_vars'))[:Nqcd]
         else:                    self.SS = np.load('%s/%s_%s.npy'%(base, name, 'ss_vars'))[:Nsig]
 
-        if REGRESSION:
-            self.Y = np.load('%s/%s_%s.npy'%(base, name, 'y'))[:,:1]
-        else:
-            if MULTICLASS:
+        if MULTICLASS:
                 self.Y = np_utils.to_categorical(
-                            pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'y')).values[:,:1],
+                            pd.read_pickle('%s/%s_%s.npy'%(base, name, 'y')).values[:,:1],
                             max_Y
                         )
-            else:
+        else:
               if 'QCD' in name:
                 self.Y = np_utils.to_categorical(
-                            (pd.read_pickle('%s/%s_%s.pkl'%(base, name, 'y')).values[:Nqcd,:1] > 0).astype(np.int),
+                            (np.load('%s/%s_%s.npy'%(base, name, 'y'))[:Nqcd] > 0).astype(np.int),
                             2
                         )
               else:
@@ -79,7 +76,6 @@ class Sample(object):
     def infer(self, model):
         if 'GRU' in model.name: self.X = np.reshape(self.X, (self.X.shape[0], 1, self.X.shape[1])) 
         if 'Dense' in model.name: self.X = np.reshape(self.X, (self.X.shape[0],self.X.shape[1]))
-        print model.name, self.X.shape
         self.Yhat[model.name] = model.predict(self.X)
     def standardize(self, mu, std):
         self.X = (self.X - mu) / std
