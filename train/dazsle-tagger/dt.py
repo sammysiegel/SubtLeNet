@@ -24,9 +24,9 @@ MULTICLASS = False
 REGRESSION = False
 np.random.seed(5)
 
-basedir = '/eos/uscms/store/user/jkrupa/trainingData/npy/'
-Nqcd = 100000
-Nsig = 100000
+basedir = '/home/jeffkrupa/files_Jul31'
+Nqcd = 1200000
+Nsig = 1200000
 
 def _make_parent(path):
     os.system('mkdir -p %s'%('/'.join(path.split('/')[:-1])))
@@ -88,17 +88,6 @@ class ClassModel(object):
         self.n_targets = n_targets if MULTICLASS else 2
         self.n_hidden = n_hidden
 
-        self.inputs = Input(shape=(int(n_inputs),), name='input')
-        h = self.inputs
-        h = BatchNormalization(momentum=0.6)(h)
-        for _ in xrange(n_hidden-1):
-            h = Dense(int(n_inputs), activation='relu')(h)
-            h = BatchNormalization()(h)
-        h = Dense(int(n_inputs*0.1), activation='tanh')(h)
-        h = BatchNormalization()(h)
-        if REGRESSION:
-            self.outputs = Dense(1, activation='linear', name='output')(h)
-
         self.tX = np.vstack([s.X[:][s.tidx] for s in samples])
         self.tW = np.concatenate([s.W[s.tidx] for s in samples])
         self.vX = np.vstack([s.X[:][s.vidx] for s in samples])
@@ -126,11 +115,13 @@ class ClassModel(object):
             LWR=0.1
      
             gru = GRU(n_inputs,activation='relu',recurrent_activation='hard_sigmoid',name='gru_base')(h)
-            dense   = Dense(100, activation='relu')(gru)
+            dense   = Dense(200, activation='relu')(gru)
             norm    = BatchNormalization(momentum=0.6, name='dense4_bnorm')  (dense)
-            dense   = Dense(50, activation='relu')(norm)
+            dense   = Dense(100, activation='relu')(norm)
             norm    = BatchNormalization(momentum=0.6, name='dense5_bnorm')  (dense)
-            dense   = Dense(20, activation='relu')(norm)
+            dense   = Dense(50, activation='relu')(norm)
+            norm    = BatchNormalization(momentum=0.6, name='dense6_bnorm')  (dense)
+            dense   = Dense(20, activation='relu')(dense)
             dense   = Dense(10, activation='relu')(dense)
             outputs = Dense(self.n_targets, activation='sigmoid')(norm)
             self.model = Model(inputs=self.inputs, outputs=outputs)
@@ -142,7 +133,7 @@ class ClassModel(object):
             h = self.inputs
             h = BatchNormalization(momentum=0.6)(h)
             for _ in xrange(n_hidden-1):
-              h = Dense(int(n_inputs*0.05), activation='relu')(h)
+              h = Dense(int(n_inputs*0.1), activation='relu')(h)
               h = BatchNormalization()(h)
             h = Dense(int(n_inputs*0.1), activation='tanh')(h)
             h = BatchNormalization()(h)
@@ -157,7 +148,7 @@ class ClassModel(object):
     def train(self, samples):
 
         history = self.model.fit(self.tX, self.tY, sample_weight=self.tW, 
-                                 batch_size=1000000, epochs=1, shuffle=True,
+                                 batch_size=10000, epochs=10, shuffle=True,
                                  validation_data=(self.vX, self.vY, self.vW))
 
         with open('history.log','w') as flog:
@@ -217,10 +208,19 @@ def plot(binning, fn, samples, outpath, xlabel=None, ylabel=None):
     return hists
 
 
-def get_mu_std(samples):
+def get_mu_std(samples, modeldir):
     X = np.array(np.vstack([s.X for s in samples]), np.float64)
     mu = np.mean(X, axis=0)
     std = np.std(X, axis=0)
+
+    for it,val in enumerate(np.nditer(mu)):
+        if val == 0.: mu[it] = 1.
+    for it,val in enumerate(np.nditer(std)):
+        if val == 0.: std[it] = 1.
+
+    np.save(modeldir+'standardize_mu.npy',mu)
+    np.save(modeldir+'standardize_std.npy',std)
+    
     return mu, std
 
 def make_plots(samples):
@@ -284,6 +284,7 @@ if __name__ == '__main__':
     figsdir = 'plots/%s/'%(args.version)
     modeldir = 'models/evt/v%i/'%(args.version)
 
+    _make_parent(modeldir)
     SIG = 'BulkGraviton'
     BKG = 'QCD'
 
@@ -298,11 +299,11 @@ if __name__ == '__main__':
 
     #for s in samples: print s.name, 'tidx.shape + vidx.shape: ', s.tidx.shape, s.vidx.shape
 
-    #print 'Standardizing...'
-    #mu, std = get_mu_std(samples)
-    #[s.standardize(mu, std) for s in samples]
+    print 'Standardizing...'
+    mu, std = get_mu_std(samples,modeldir)
+    [s.standardize(mu, std) for s in samples]
 
-    n_hidden = 3
+    n_hidden = 5
     if 'Dense' in models:
         modelDNN = ClassModel(n_inputs, n_hidden, len(samples),samples,'Dense')
         if args.train:
