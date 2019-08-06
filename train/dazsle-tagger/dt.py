@@ -43,7 +43,7 @@ class Sample(object):
 
         if MULTICLASS:
                 self.Y = np_utils.to_categorical(
-                            pd.read_pickle('%s/%s_%s.npy'%(base, name, 'y')).values[:,:1],
+                            np.load('%s/%s_%s.npy'%(base, name, 'y')),
                             max_Y
                         )
         else:
@@ -221,6 +221,8 @@ def get_mu_std(samples):
     X = np.array(np.vstack([s.X for s in samples]), np.float64)
     mu = np.mean(X, axis=0)
     std = np.std(X, axis=0)
+    np.save('standardize_mu.npy',mu)
+    np.save('standardize_std.npy',std)
     return mu, std
 
 def make_plots(samples):
@@ -296,11 +298,9 @@ if __name__ == '__main__':
     print n_inputs
     print('# sig: ',samples[0].X.shape[0], '#bkg: ',samples[1].X.shape[0])
 
-    #for s in samples: print s.name, 'tidx.shape + vidx.shape: ', s.tidx.shape, s.vidx.shape
-
-    #print 'Standardizing...'
-    #mu, std = get_mu_std(samples)
-    #[s.standardize(mu, std) for s in samples]
+    print 'Standardizing...'
+    mu, std = get_mu_std(samples)
+    [s.standardize(mu, std) for s in samples]
 
     n_hidden = 3
     if 'Dense' in models:
