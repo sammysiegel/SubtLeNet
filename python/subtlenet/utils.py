@@ -58,9 +58,7 @@ _epsilon = np.finfo(float).eps
 def _clip(x):
     return np.sign(x + _epsilon) * np.clip(np.abs(x), _epsilon, np.inf)
 
-#default_colors = np.concatenate([pl.cm.tab10(np.linspace(0,1,10)),
-#                                 pl.cm.Dark2(np.linspace(0,1,9))])
-default_colors = seaborn.color_palette('YlGnBu',2)
+default_colors = seaborn.color_palette('hls',10)
 def sanitize_mask(x):
     return x==x
 
@@ -429,7 +427,7 @@ class Roccer(object):
 
         min_value = 1
 
-        colors = seaborn.color_palette('YlGnBu',5) #pl.cm.tab10(np.linspace(0,1,len(self.cfgs)))
+        colors = seaborn.color_palette('hls',10) #pl.cm.tab10(np.linspace(0,1,len(self.cfgs)))
 
         for i, (sig_hist, bkg_hist, label, customcolor, linestyle) in enumerate(self.cfgs):
             h_sig = sig_hist
