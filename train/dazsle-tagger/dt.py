@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve
 from sklearn.utils import shuffle
 from keras.models import Model, load_model
-from keras.callbacks import ModelCheckpoint
+from keras.callbacks import ModelCheckpoint, EarlyStopping
 #from subtlenet.backend.keras_objects import *
 #from subtlenet.backend.losses import *
 from keras.layers import Dense, BatchNormalization, Input, Dropout, Activation, concatenate, GRU
@@ -24,21 +24,10 @@ MULTICLASS = False
 REGRESSION = False
 np.random.seed(5)
 
-basedir = '/eos/uscms/store/user/jkrupa/trainingData/npy2'#'/home/jeffkrupa/files_Jul31'
-Nqcd = 500000
-Nsig = 500000
-Nparts = 20
-
-decayMap = {
-	    0 : "none",
-	    1 : "ud",
-	    2 : "cs",
-	    3 : "b",
-            4 : "tau",
-	    5 : "glu",
-	    6 : "ZZ",
-	    7 : "WW" 
-	    }
+basedir = '/home/jeffkrupa/files_nano_VectorDiJet-flat_QCD-UL'
+Nqcd = 1000000
+Nsig = 1000000
+Nparts = 50
 
 def _make_parent(path):
     os.system('mkdir -p %s'%('/'.join(path.split('/')[:-1])))
@@ -52,11 +41,11 @@ class Sample(object):
 
         self.X = np.load('%s/%s_%s.npy'%(base, name, 'x'))[:N]
         self.SS = np.load('%s/%s_%s.npy'%(base, name, 'ss'))[:N]
-        self.D = np.load('%s/%s_%s.npy'%(base, name, 'decay'))[:N]
+        #self.D = np.load('%s/%s_%s.npy'%(base, name, 'decay'))[:N]
 
-        print self.D[:100]
         self.Y = np_utils.to_categorical((np.load('%s/%s_%s.npy'%(base, name, 'y'))[:N] > 0).astype(np.int), 2)
         self.W = np.load('%s/%s_%s.npy'%(base, name, 'w'))[:N]
+
 
         self.idx = np.random.permutation(self.Y.shape[0])
 
@@ -73,14 +62,14 @@ class Sample(object):
         else:
             return self.idx[:int(VALSPLIT*len(self.idx))]
     def infer(self, model):
-        if 'GRU' in model.name: self.X = np.reshape(self.X, (self.X.shape[0], Nparts, self.X.shape[1]/Nparts)) 
+        if 'GRU' in model.name: self.X = np.reshape(self.X, (self.X.shape[0], self.X.shape[1]/Nparts, Nparts)) 
         if 'Dense' in model.name: self.X = np.reshape(self.X, (self.X.shape[0],self.X.shape[1]))
         self.Yhat[model.name] = model.predict(self.X)
     def standardize(self, mu, std):
         self.X = (self.X - mu) / std
 
 class ClassModel(object):
-    def __init__(self, n_inputs, h_hidden, n_targets, samples, model):
+    def __init__(self, n_inputs, h_hidden, n_targets, samples, model, modeldir="."):
         self._hidden = 0
         self.name = model
         self.n_inputs = n_inputs
@@ -89,33 +78,94 @@ class ClassModel(object):
 
         self.tX = np.vstack([s.X[:][s.tidx] for s in samples])
         self.tW = np.concatenate([s.W[s.tidx] for s in samples])
-        self.tD = np.concatenate([s.D[s.tidx] for s in samples])
+        #self.tD = np.concatenate([s.D[s.tidx] for s in samples])
         self.vX = np.vstack([s.X[:][s.vidx] for s in samples])
         self.vW = np.concatenate([s.W[s.vidx] for s in samples])
-        self.vD = np.concatenate([s.D[s.vidx] for s in samples])
+        #self.vD = np.concatenate([s.D[s.vidx] for s in samples])
+      
 
         self.tY = np.vstack([s.Y[s.tidx] for s in samples])
         self.vY = np.vstack([s.Y[s.vidx] for s in samples])
         self.tSS = np.vstack([s.SS[s.tidx] for s in samples])
         self.vSS = np.vstack([s.SS[s.vidx] for s in samples])
 
-        for i in xrange(self.tY.shape[1]):
-          tot = np.sum(self.tW[self.tY[:,i] == 1])
-          self.tW[self.tY[:,i] == 1] *= 100/tot
-          self.vW[self.vY[:,i] == 1] *= 100/tot
+        #for i in xrange(self.tY.shape[1]):
+        #  tot = np.sum(self.tW[self.tY[:,i] == 1])
+        #  self.tW[self.tY[:,i] == 1] *= 100/tot
+        #  self.vW[self.vY[:,i] == 1] *= 100/tot
+
+        self.W = np.concatenate([self.vW,self.tW])
+        self.Y = np.concatenate([self.vY,self.tY])
+   	nbins=30
+     	ptbins = np.linspace(400.,1400.,num=nbins+1)
+        sighist = np.zeros(nbins,dtype='f8')
+        bkghist = np.zeros(nbins,dtype='f8')
+        ptweights = np.ones(len(self.tY),dtype='f8')
+        ptweights_val = np.ones(len(self.vY),dtype='f8')
+
+        for x in range(len(self.W)):
+            pti = 1
+            while (pti<nbins):
+                if (self.W[x]>ptbins[pti-1] and self.W[x]<ptbins[pti]): break
+                pti = pti+1
+            if (pti<nbins):
+                if (self.Y[x,0]==1):
+                    sighist[pti] = sighist[pti]+1.
+                else:
+                    bkghist[pti] = bkghist[pti]+1.
+        sighist = sighist/sum(sighist)
+        bkghist = bkghist/sum(bkghist)
+        for y in range(len(sighist)):
+            if (bkghist[y]>0.): print(sighist[y]/bkghist[y],)
+            else: print(1.,)
+
+        print('\n')
+        for x in range(len(self.tW)):
+            if (not self.tY[x,0]==0): continue
+            pti = 1
+            while (pti<nbins):
+                if (self.tW[x]>ptbins[pti-1] and self.tW[x]<ptbins[pti]): break
+                pti = pti+1
+            if (pti<nbins and bkghist[pti]>0.): ptweights[x] = sighist[pti]/bkghist[pti]
+
+
+        for x in range(len(self.vW)):
+            if (not self.vY[x,0]==0): continue
+            pti = 1
+            while (pti<nbins):
+                if (self.vW[x]>ptbins[pti-1] and self.vW[x]<ptbins[pti]): break
+                pti = pti+1
+            if (pti<nbins and bkghist[pti]>0.): ptweights_val[x] = sighist[pti]/bkghist[pti]
+
+        x,y,z = plt.hist(self.tW[self.tY[:,0]==1],nbins+20,weights=ptweights[self.tY[:,0]==1],density=True,range=(400,1500),facecolor='red',alpha=0.5,label='Signal')
+        x,y,z = plt.hist(self.tW[self.tY[:,0]==0],nbins+20,weights=ptweights[self.tY[:,0]==0],density=True,range=(400,1500),facecolor='blue',alpha=0.5,label='Background')
+        plt.legend(loc='best')
+        plt.xlabel('pT (GeV)')
+        plt.ylabel('a.u.')
+        plt.savefig(modeldir+'pt_weights.pdf')
+        plt.savefig(modeldir+'pt_weights.png')
+
+        #print np.argwhere(np.isnan(ptweights_val)), np.argwhere(np.isnan(ptweights))
+        #print ptweights_val[ptweights_val==0]
+        #print ptweights[ptweights==0]
+
+        self.vW = ptweights_val
+        self.tW = ptweights
 
         if 'GRU' in self.name:
-            self.tX = np.reshape(self.tX, (self.tX.shape[0], Nparts, self.tX.shape[1]/Nparts))
-            self.vX = np.reshape(self.vX, (self.vX.shape[0], Nparts, self.vX.shape[1]/Nparts))
+            self.tX = np.reshape(self.tX, (self.tX.shape[0], self.tX.shape[1]/Nparts, Nparts))
+            self.vX = np.reshape(self.vX, (self.vX.shape[0], self.vX.shape[1]/Nparts, Nparts))
 
-            self.inputs = Input(shape=(Nparts,self.tX.shape[2]), name='input')
+            print self.tX[0]
+            self.inputs = Input(shape=(self.tX.shape[1], Nparts), name='input')
             h = self.inputs
         
             NPARTS=20
-            CLR=0.01
+            CLR=0.001
             LWR=0.1
-     
-            gru = GRU(n_inputs,activation='relu',recurrent_activation='hard_sigmoid',name='gru_base')(h)
+    
+            h = BatchNormalization(momentum=0.6)(h)
+            gru = GRU(140,activation='relu',recurrent_activation='hard_sigmoid',name='gru_base',dropout=0.05)(h)
             dense   = Dense(200, activation='relu')(gru)
             norm    = BatchNormalization(momentum=0.6, name='dense4_bnorm')  (dense)
             dense   = Dense(100, activation='relu')(norm)
@@ -128,29 +178,40 @@ class ClassModel(object):
             self.model = Model(inputs=self.inputs, outputs=outputs)
 
             self.model.compile(loss='binary_crossentropy', optimizer=Adam(CLR), metrics=['accuracy'])
+            self.es = EarlyStopping(monitor='loss', mode='min', verbose=1, patience=3)
 
         if 'Dense' in self.name:
             self.inputs = Input(shape=(int(n_inputs),), name='input')
             h = self.inputs
             h = BatchNormalization(momentum=0.6)(h)
             for _ in xrange(n_hidden-1):
-              h = Dense(int(n_inputs*0.1), activation='relu')(h)
+              h = Dense(int(n_inputs*0.2), activation='relu')(h)
               h = BatchNormalization()(h)
-            h = Dense(int(n_inputs*0.1), activation='tanh')(h)
+            h = Dense(int(n_inputs*0.2), activation='tanh')(h)
             h = BatchNormalization()(h)
             self.outputs = Dense(self.n_targets, activation='softmax', name='output')(h)
             self.model = Model(inputs=self.inputs, outputs=self.outputs)
             self.model.compile(optimizer=Adam(),
-                               loss='binary_crossentropy')
- 
+                               loss='binary_crossentropy', metrics=['accuracy'])
+            self.es = EarlyStopping(monitor='loss', mode='min', verbose=1, patience=5)
         self.model.summary()
 
 
-    def train(self, samples):
+    def train(self, samples,modeldir="."):
 
+        #print self.tX.shape, self.tY.shape, self.tW.shape 
+        #print self.vX.shape, self.vY.shape, self.vW.shape 
         history = self.model.fit(self.tX, self.tY, sample_weight=self.tW, 
-                                 batch_size=1000, epochs=10, shuffle=True,
-                                 validation_data=(self.vX, self.vY, self.vW))
+                                 batch_size=5000, epochs=50, shuffle=True,
+                                 validation_data=(self.vX, self.vY, self.vW),callbacks=[self.es])
+        plt.clf()
+        plt.plot(history.history['loss'])
+        plt.plot(history.history['val_loss'])
+        plt.ylabel('loss')
+        plt.xlabel('epoch')
+        plt.legend(['train', 'test'], loc='upper left')
+        plt.savefig(modeldir+'loss.png')
+        plt.savefig(modeldir+'loss.pdf')
 
         with open('history.log','w') as flog:
             history = history.history
@@ -182,33 +243,20 @@ class ClassModel(object):
         self.model = load_model(path)
 
 
-def plot(binning, fn, decay, samples, outpath, xlabel=None, ylabel=None):
+def plot(binning, fn, samples, outpath, xlabel=None, ylabel=None):
     hists = {}
     for s in samples:
-
-
- 
-      for d in [0,1,2]:#np.nditer(np.unique(decay(s))):
-        itt = 0 if 'QCD' in s.name else d
-        print itt
-        decayIndices = np.where(decay(s) == itt, 1, 0)
-        weights = np.multiply(decayIndices, s.W[s.vidx])
-
         h = utils.NH1(binning)
         if type(fn) == int:
-            h.fill_array(s.X[s.vidx,fn], weights=weights)
+            h.fill_array(s.X[s.vidx,fn], weights=s.W[s.vidx])
         else:
-            h.fill_array(fn(s), weights=weights)
+            h.fill_array(fn(s), weights=s.W[s.vidx])
         h.scale()
-        hists['%s_%s'%(s.name,decayMap[int(itt)])] = h
+        hists[s.name] = h
         
     p = utils.Plotter()
     for i,s in enumerate(samples):
-      print np.unique(decay(s))
-      for d in [0,1,2]:#np.nditer(np.unique(decay(s))):
-        itt = 0 if 'QCD' in s.name else d
-        x = 5 if 'QCD' in s.name else 0
-        p.add_hist(hists['%s_%s'%(s.name,decayMap[int(itt)])], '%s %s'%(s.name,decayMap[int(d)]), int(d)+x)
+         p.add_hist(hists[s.name], s.name, i)
 
     _make_parent(outpath)
 
@@ -251,10 +299,10 @@ if __name__ == '__main__':
     modeldir = 'models/evt/v%i/'%(args.version)
 
     _make_parent(modeldir)
-    SIG = 'BulkGraviton'
+    SIG = 'VectorDiJet-flat'
     BKG = 'QCD'
 
-    models = ['GRU']
+    models = ['GRU',]
 
     samples = [SIG,BKG]
 
@@ -263,15 +311,15 @@ if __name__ == '__main__':
     print('# sig: ',samples[0].X.shape[0], '#bkg: ',samples[1].X.shape[0])
 
     print 'Standardizing...'
-    mu, std = get_mu_std(samples,modeldir)
+    #mu, std = get_mu_std(samples,modeldir)
     #[s.standardize(mu, std) for s in samples]
 
     n_hidden = 5
     if 'Dense' in models:
-        modelDNN = ClassModel(n_inputs, n_hidden, len(samples),samples,'Dense')
+        modelDNN = ClassModel(n_inputs, n_hidden, len(samples),samples,'Dense',modeldir)
         if args.train:
             print 'Training dense...'
-            modelDNN.train(samples)
+            modelDNN.train(samples,modeldir)
             modelDNN.save_as_keras(modeldir+'/weights_dense.h5')
             modelDNN.save_as_tf(modeldir+'/graph_dense.pb')
         else:
@@ -304,56 +352,40 @@ if __name__ == '__main__':
         samples.reverse()
         roccer_hists = {}
         roccer_hists_SS = {}
-        SS_vars = {'N2':1}
+        SS_vars = {'N2':1,'tau21':2}
 
         sig_hists = {}
         bkg_hists = {}
 
         for idx,num in SS_vars.iteritems():
                      roccer_hists_SS[idx] = plot(np.linspace(0,1,50),
-                     lambda s: s.SS[s.vidx,0], lambda s: s.D[s.vidx],
+                     lambda s: s.SS[s.vidx,num-1],
                      samples, figsdir+'%s'%(idx), xlabel='%s'%(idx))
-        
-                     for decay in [0,1,2]:#np.unique(s.D[s.vidx]):
-
-                       decayId = decayMap[int(decay)]
-                       print 'N2_%s'%decayId  
-                       sig_hists['N2_%s'%decayId] = roccer_hists_SS['N2']["%s_%s"%(SIG,decayId)]    
-                       bkg_hists['N2_%s'%decayId] = roccer_hists_SS['N2']["%s_%s"%(BKG,decayMap[0])]    
-                     r1 = utils.Roccer(y_range=range(0,1),axis=[0,1,0,1])
-                     r1.clear()
-
-                     r1.add_vars(sig_hists,           
-                                 bkg_hists,
-                                 {'N2_none':'N2 none',
-                                  'N2_ud'  :'N2 ud',
-                                  'N2_cs'  :'N2 cs'}
-                     )
-                     r1.plot(figsdir+'class_%s_%s_ROC'%(str(args.version),"N2"))
+       
+        sig_hists['N2'] = roccer_hists_SS['N2'][SIG]    
+        bkg_hists['N2'] = roccer_hists_SS['N2'][BKG]    
+        sig_hists['tau21'] = roccer_hists_SS['tau21'][SIG]  
+        bkg_hists['tau21'] = roccer_hists_SS['tau21'][BKG]    
 
         for model in models:
-            sig_hists = {}
-            bkg_hists = {} 
             for i in xrange(len(samples) if MULTICLASS else 2):
 
                 roccer_hists = plot(np.linspace(0, 1, 50), 
-                       lambda s, i=i : s.Yhat[model][s.vidx,i], lambda s: s.D[s.vidx], 
+                       lambda s, i=i : s.Yhat[model][s.vidx,i], 
                        samples, figsdir+'class_%i_%s'%(i,model), xlabel='Class %i %s'%(i,model))
-                 
-            for decay in [0,1,2]:
-                    decayId = decayMap[int(decay)]
-                    print decayId
-                    sig_hists["%s_%s"%(model,decayId)] = roccer_hists["%s_%s"%(SIG,decayId)]
-                    bkg_hists["%s_%s"%(model,decayId)] = roccer_hists["%s_%s"%(BKG,decayMap[0])] 
-                    print "%s_%s"%(model,decayId)
 
-            r1 = utils.Roccer(y_range=range(0,1),axis=[0,1,0,1])
-            r1.clear()
 
-            r1.add_vars(sig_hists,           
-                        bkg_hists,
-                    {'%s_none'%model:'%s none'%model,
-                     '%s_ud'%model:'%s ud'%model,
-                     '%s_cs'%model:'%s cs'%model}
-            )
-            r1.plot(figsdir+'class_%s_%s_ROC'%(str(args.version),model))
+                sig_hists[model] = roccer_hists[SIG]
+                bkg_hists[model] = roccer_hists[BKG] 
+
+        r1 = utils.Roccer(y_range=range(0,1),axis=[0,1,0,1],)
+        r1.clear()
+
+        r1.add_vars(sig_hists,           
+                    bkg_hists,
+                    {'Dense':'Dense',
+		     'GRU':'GRU',
+                     'N2':'N2',
+                     'tau21':'tau21'}
+        )
+        r1.plot(figsdir+'class_%s_ROC'%(str(args.version)))                 
