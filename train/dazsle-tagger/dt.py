@@ -110,11 +110,6 @@ class ClassModel(object):
 
         for x in range(len(self.W)):
 
-            if (self.Y[x,0]==1):
-                ipt  = np.argwhere(ptbins == self.W[x][0])
-                imsd = np.argwhere(msdbins == self.W[x][1])
-                sighist[
-
             pti = 1
             msdi = 1
             while (pti<nbins_pt):
