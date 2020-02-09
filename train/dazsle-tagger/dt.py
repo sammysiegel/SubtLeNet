@@ -96,46 +96,72 @@ class ClassModel(object):
 
         self.W = np.concatenate([self.vW,self.tW])
         self.Y = np.concatenate([self.vY,self.tY])
-   	nbins=30
+
+   	nbins_pt=30
+        nbins_msd=30  
+
      	ptbins = np.linspace(400.,1400.,num=nbins+1)
-        sighist = np.zeros(nbins,dtype='f8')
-        bkghist = np.zeros(nbins,dtype='f8')
+     	msdbins = np.linspace(40.,325.,num=nbins+1)
+        sighist = np.zeros(shape=(nbins_pt,nbins_msd),dtype='f8')
+        bkghist = np.zeros(shape=(nbins_pt,nbins_msd),dtype='f8')
+
         ptweights = np.ones(len(self.tY),dtype='f8')
         ptweights_val = np.ones(len(self.vY),dtype='f8')
 
         for x in range(len(self.W)):
+
+            if (self.Y[x,0]==1):
+                ipt  = np.argwhere(ptbins == self.W[x][0])
+                imsd = np.argwhere(msdbins == self.W[x][1])
+                sighist[
+
             pti = 1
-            while (pti<nbins):
-                if (self.W[x]>ptbins[pti-1] and self.W[x]<ptbins[pti]): break
+            msdi = 1
+            while (pti<nbins_pt):
+                if (self.W[x][0]>ptbins[pti-1] and self.W[x][0]<ptbins[pti]): break
                 pti = pti+1
-            if (pti<nbins):
+            while (msdi<nbins_msd):
+                if (self.W[x][1]>ptbins[msdi-1] and self.W[x][1]<ptbins[msdi]): break
+                msdi = msdi+1
+            if (pti<nbins_pt and msdi<nbins_msd):
                 if (self.Y[x,0]==1):
-                    sighist[pti] = sighist[pti]+1.
+                    sighist[pti][msdi] = sighist[pti][msdi]+1.
                 else:
-                    bkghist[pti] = bkghist[pti]+1.
+                    bkghist[pti][msdi] = bkghist[pti][msdi]+1.
+
         sighist = sighist/sum(sighist)
         bkghist = bkghist/sum(bkghist)
-        for y in range(len(sighist)):
-            if (bkghist[y]>0.): print(sighist[y]/bkghist[y],)
+
+        for x in range(sighist.shape[0]):
+          for y in range(sighist.shape[1]):
+            if (bkghist[x][y]>0.): print(sighist[x][y]/bkghist[x][y],)
             else: print(1.,)
 
         print('\n')
         for x in range(len(self.tW)):
             if (not self.tY[x,0]==0): continue
             pti = 1
-            while (pti<nbins):
-                if (self.tW[x]>ptbins[pti-1] and self.tW[x]<ptbins[pti]): break
+            msdi = 1
+            while (pti<nbins_pt):
+                if (self.W[x][0]>ptbins[pti-1] and self.W[x][0]<ptbins[pti]): break
                 pti = pti+1
-            if (pti<nbins and bkghist[pti]>0.): ptweights[x] = sighist[pti]/bkghist[pti]
+            while (msdi<nbins_msd):
+                if (self.W[x][1]>ptbins[msdi-1] and self.W[x][1]<ptbins[msdi]): break
+                msdi = msdi+1
+            if (pti<nbins_pt and msdi<nbins_msd and bkghist[pti][msdi]>0.): ptweights[x] = sighist[pti][msdi]/bkghist[pti][msdi]
 
 
         for x in range(len(self.vW)):
             if (not self.vY[x,0]==0): continue
             pti = 1
-            while (pti<nbins):
-                if (self.vW[x]>ptbins[pti-1] and self.vW[x]<ptbins[pti]): break
+            msdi = 1
+            while (pti<nbins_pt):
+                if (self.W[x][0]>ptbins[pti-1] and self.W[x][0]<ptbins[pti]): break
                 pti = pti+1
-            if (pti<nbins and bkghist[pti]>0.): ptweights_val[x] = sighist[pti]/bkghist[pti]
+            while (msdi<nbins_msd):
+                if (self.W[x][1]>ptbins[msdi-1] and self.W[x][1]<ptbins[msdi]): break
+                msdi = msdi+1
+            if (pti<nbins_pt and msdi<nbins_msd and bkghist[pti][msdi]>0.): ptweights_val[x] = sighist[pti][msdi]/bkghist[pti][msdi]
 
         x,y,z = plt.hist(self.tW[self.tY[:,0]==1],nbins+20,weights=ptweights[self.tY[:,0]==1],density=True,range=(400,1500),facecolor='red',alpha=0.5,label='Signal')
         x,y,z = plt.hist(self.tW[self.tY[:,0]==0],nbins+20,weights=ptweights[self.tY[:,0]==0],density=True,range=(400,1500),facecolor='blue',alpha=0.5,label='Background')
