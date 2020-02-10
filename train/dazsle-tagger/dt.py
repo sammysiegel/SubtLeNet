@@ -41,10 +41,9 @@ class Sample(object):
 
         self.X = np.load('%s/%s_%s.npy'%(base, name, 'x'))[:N]
         self.SS = np.load('%s/%s_%s.npy'%(base, name, 'ss'))[:N]
-        #self.D = np.load('%s/%s_%s.npy'%(base, name, 'decay'))[:N]
 
         self.Y = np_utils.to_categorical((np.load('%s/%s_%s.npy'%(base, name, 'y'))[:N] > 0).astype(np.int), 2)
-        self.W = np.load('%s/%s_%s.npy'%(base, name, 'w'))[:N]
+        self.W = np.load('%s/%s_%s.npy'%(base, name, args.wname))[:N]
 
 
         self.idx = np.random.permutation(self.Y.shape[0])
@@ -94,84 +93,6 @@ class ClassModel(object):
         #  self.tW[self.tY[:,i] == 1] *= 100/tot
         #  self.vW[self.vY[:,i] == 1] *= 100/tot
 
-        self.W = np.concatenate([self.vW,self.tW])
-        self.Y = np.concatenate([self.vY,self.tY])
-
-   	nbins_pt=30
-        nbins_msd=30  
-
-     	ptbins = np.linspace(400.,1400.,num=nbins+1)
-     	msdbins = np.linspace(40.,325.,num=nbins+1)
-        sighist = np.zeros(shape=(nbins_pt,nbins_msd),dtype='f8')
-        bkghist = np.zeros(shape=(nbins_pt,nbins_msd),dtype='f8')
-
-        ptweights = np.ones(len(self.tY),dtype='f8')
-        ptweights_val = np.ones(len(self.vY),dtype='f8')
-
-        for x in range(len(self.W)):
-
-            pti = 1
-            msdi = 1
-            while (pti<nbins_pt):
-                if (self.W[x][0]>ptbins[pti-1] and self.W[x][0]<ptbins[pti]): break
-                pti = pti+1
-            while (msdi<nbins_msd):
-                if (self.W[x][1]>ptbins[msdi-1] and self.W[x][1]<ptbins[msdi]): break
-                msdi = msdi+1
-            if (pti<nbins_pt and msdi<nbins_msd):
-                if (self.Y[x,0]==1):
-                    sighist[pti][msdi] = sighist[pti][msdi]+1.
-                else:
-                    bkghist[pti][msdi] = bkghist[pti][msdi]+1.
-
-        sighist = sighist/sum(sighist)
-        bkghist = bkghist/sum(bkghist)
-
-        for x in range(sighist.shape[0]):
-          for y in range(sighist.shape[1]):
-            if (bkghist[x][y]>0.): print(sighist[x][y]/bkghist[x][y],)
-            else: print(1.,)
-
-        print('\n')
-        for x in range(len(self.tW)):
-            if (not self.tY[x,0]==0): continue
-            pti = 1
-            msdi = 1
-            while (pti<nbins_pt):
-                if (self.W[x][0]>ptbins[pti-1] and self.W[x][0]<ptbins[pti]): break
-                pti = pti+1
-            while (msdi<nbins_msd):
-                if (self.W[x][1]>ptbins[msdi-1] and self.W[x][1]<ptbins[msdi]): break
-                msdi = msdi+1
-            if (pti<nbins_pt and msdi<nbins_msd and bkghist[pti][msdi]>0.): ptweights[x] = sighist[pti][msdi]/bkghist[pti][msdi]
-
-
-        for x in range(len(self.vW)):
-            if (not self.vY[x,0]==0): continue
-            pti = 1
-            msdi = 1
-            while (pti<nbins_pt):
-                if (self.W[x][0]>ptbins[pti-1] and self.W[x][0]<ptbins[pti]): break
-                pti = pti+1
-            while (msdi<nbins_msd):
-                if (self.W[x][1]>ptbins[msdi-1] and self.W[x][1]<ptbins[msdi]): break
-                msdi = msdi+1
-            if (pti<nbins_pt and msdi<nbins_msd and bkghist[pti][msdi]>0.): ptweights_val[x] = sighist[pti][msdi]/bkghist[pti][msdi]
-
-        x,y,z = plt.hist(self.tW[self.tY[:,0]==1],nbins+20,weights=ptweights[self.tY[:,0]==1],density=True,range=(400,1500),facecolor='red',alpha=0.5,label='Signal')
-        x,y,z = plt.hist(self.tW[self.tY[:,0]==0],nbins+20,weights=ptweights[self.tY[:,0]==0],density=True,range=(400,1500),facecolor='blue',alpha=0.5,label='Background')
-        plt.legend(loc='best')
-        plt.xlabel('pT (GeV)')
-        plt.ylabel('a.u.')
-        plt.savefig(modeldir+'pt_weights.pdf')
-        plt.savefig(modeldir+'pt_weights.png')
-
-        #print np.argwhere(np.isnan(ptweights_val)), np.argwhere(np.isnan(ptweights))
-        #print ptweights_val[ptweights_val==0]
-        #print ptweights[ptweights==0]
-
-        self.vW = ptweights_val
-        self.tW = ptweights
 
         if 'GRU' in self.name:
             self.tX = np.reshape(self.tX, (self.tX.shape[0], self.tX.shape[1]/Nparts, Nparts))
@@ -314,7 +235,10 @@ if __name__ == '__main__':
     parser.add_argument('--train', action='store_true')
     parser.add_argument('--plot', action='store_true')
     parser.add_argument('--version', type=int, default=0)
+    parser.add_argument('--wname', type=str, default="w")
+
     args = parser.parse_args()
+    print "using weight %s"%args.wname 
 
     figsdir = 'plots/%s/'%(args.version)
     modeldir = 'models/evt/v%i/'%(args.version)
