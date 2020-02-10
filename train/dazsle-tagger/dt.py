@@ -24,10 +24,10 @@ MULTICLASS = False
 REGRESSION = False
 np.random.seed(5)
 
-basedir = '/home/jeffkrupa/files_nano_VectorDiJet-flat_QCD-UL'
+basedir = '/home/jeffkrupa/files/deepJet-v3'
 Nqcd = 1000000
 Nsig = 1000000
-Nparts = 50
+Nparts = 40
 
 def _make_parent(path):
     os.system('mkdir -p %s'%('/'.join(path.split('/')[:-1])))
@@ -44,7 +44,6 @@ class Sample(object):
 
         self.Y = np_utils.to_categorical((np.load('%s/%s_%s.npy'%(base, name, 'y'))[:N] > 0).astype(np.int), 2)
         self.W = np.load('%s/%s_%s.npy'%(base, name, args.wname))[:N]
-
 
         self.idx = np.random.permutation(self.Y.shape[0])
 
@@ -140,11 +139,11 @@ class ClassModel(object):
 
 
     def train(self, samples,modeldir="."):
-
-        #print self.tX.shape, self.tY.shape, self.tW.shape 
-        #print self.vX.shape, self.vY.shape, self.vW.shape 
+       
+        print self.tX.shape, self.tY.shape, self.tW.shape 
+        print self.vX.shape, self.vY.shape, self.vW.shape 
         history = self.model.fit(self.tX, self.tY, sample_weight=self.tW, 
-                                 batch_size=5000, epochs=50, shuffle=True,
+                                 batch_size=1000, epochs=30, shuffle=True,
                                  validation_data=(self.vX, self.vY, self.vW),callbacks=[self.es])
         plt.clf()
         plt.plot(history.history['loss'])
@@ -161,6 +160,8 @@ class ClassModel(object):
             for l in zip(*history.values()):
                 flog.write(','.join([str(x) for x in l])+'\n')
 
+    def weights(self):
+        return self.tW,self.vW
     def save_as_keras(self, path):
         _make_parent(path)
         self.model.save(path)
@@ -297,7 +298,7 @@ if __name__ == '__main__':
         samples.reverse()
         roccer_hists = {}
         roccer_hists_SS = {}
-        SS_vars = {'N2':1,'tau21':2}
+        SS_vars = {'N2':1,'deepTagZqq':2}
 
         sig_hists = {}
         bkg_hists = {}
@@ -309,8 +310,8 @@ if __name__ == '__main__':
        
         sig_hists['N2'] = roccer_hists_SS['N2'][SIG]    
         bkg_hists['N2'] = roccer_hists_SS['N2'][BKG]    
-        sig_hists['tau21'] = roccer_hists_SS['tau21'][SIG]  
-        bkg_hists['tau21'] = roccer_hists_SS['tau21'][BKG]    
+        sig_hists['deepTagZqq'] = roccer_hists_SS['deepTagZqq'][SIG]  
+        bkg_hists['deepTagZqq'] = roccer_hists_SS['deepTagZqq'][BKG]    
 
         for model in models:
             for i in xrange(len(samples) if MULTICLASS else 2):

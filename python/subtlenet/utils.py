@@ -469,7 +469,7 @@ class Roccer(object):
         #plt.set_ylim(self.axis[-2:])
         ax.tick_params(axis='both', which='major', labelsize=20)
         ax.tick_params(axis='both', which='minor', labelsize=0)
-        plt.yscale('log', nonposy='clip')
+        #plt.yscale('log', nonposy='clip')
         #plt.xscale('log', nonposx='clip')
         plt.legend(loc=2, fontsize=22)
         plt.ylabel('Background fake rate', fontsize=24)
