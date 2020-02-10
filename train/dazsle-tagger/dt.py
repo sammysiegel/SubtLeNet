@@ -24,10 +24,10 @@ MULTICLASS = False
 REGRESSION = False
 np.random.seed(5)
 
-basedir = '/home/jeffkrupa/files_nano_VectorDiJet-flat_QCD-UL'
+basedir = '/home/jeffkrupa/files/deepJet-v3'
 Nqcd = 1000000
 Nsig = 1000000
-Nparts = 50
+Nparts = 40
 
 def _make_parent(path):
     os.system('mkdir -p %s'%('/'.join(path.split('/')[:-1])))
@@ -45,7 +45,6 @@ class Sample(object):
 
         self.Y = np_utils.to_categorical((np.load('%s/%s_%s.npy'%(base, name, 'y'))[:N] > 0).astype(np.int), 2)
         self.W = np.load('%s/%s_%s.npy'%(base, name, 'w'))[:N]
-
 
         self.idx = np.random.permutation(self.Y.shape[0])
 
@@ -94,21 +93,73 @@ class ClassModel(object):
         #  self.tW[self.tY[:,i] == 1] *= 100/tot
         #  self.vW[self.vY[:,i] == 1] *= 100/tot
 
-        self.W = np.concatenate([self.vW,self.tW])
         self.Y = np.concatenate([self.vY,self.tY])
 
-   	nbins_pt=30
-        nbins_msd=30  
+   	nbins_pt=40
+        nbins_msd=40 
 
-     	ptbins = np.linspace(400.,1400.,num=nbins+1)
-     	msdbins = np.linspace(40.,325.,num=nbins+1)
-        sighist = np.zeros(shape=(nbins_pt,nbins_msd),dtype='f8')
-        bkghist = np.zeros(shape=(nbins_pt,nbins_msd),dtype='f8')
+     	ptbins = np.linspace(400.,1200.,num=nbins_pt+1)
+     	msdbins = np.linspace(40.,800.,num=nbins_msd+1)
+        #sighist = np.zeros(shape=(nbins_pt,nbins_msd),dtype='f8')
+        #bkghist = np.zeros(shape=(nbins_pt,nbins_msd),dtype='f8')
 
-        ptweights = np.ones(len(self.tY),dtype='f8')
-        ptweights_val = np.ones(len(self.vY),dtype='f8')
+        sig, xedges, yedges, im = plt.hist2d(self.tW[self.tY[:,0]==0][:,1], self.tW[self.tY[:,0]==0][:,0], bins=[50,50], range=[[40,350],[400,1200]])
+        sig = sig/np.sum(sig,axis=(0,1))
+        plt.savefig('sig_hist.pdf')
+        plt.show()
+ 
+        bkg, xedges, yedges, im = plt.hist2d(self.tW[self.tY[:,0]==1][:,1], self.tW[self.tY[:,0]==1][:,0], bins=[50,50], range=[[40,350],[400,1200]])
+        bkg = bkg/np.sum(bkg,axis=(0,1))
+        plt.savefig('bkg_hist.pdf')
+        plt.show()
+        plt.clf()
 
-        for x in range(len(self.W)):
+        warr = np.divide(sig,bkg)
+        qcd_reweight = np.multiply(warr, bkg)
+        print(qcd_reweight) 
+        bkg_reweight  = plt.imshow(np.transpose(qcd_reweight),aspect=0.5,extent=[40,350,400,1200],origin='lower')
+        plt.savefig('bkg_hist_reweighted.pdf')
+        plt.show()
+
+        ptweights_train = np.ones(len(self.tW),dtype='f8')
+        for x in range(len(self.tW)):
+            if (self.tY[x,0]==0): continue
+            pti = 1
+            msdi = 1
+            while (pti<nbins_pt):
+                if (self.tW[x,0]>ptbins[pti-1] and self.tW[x,0]<ptbins[pti]): break
+                pti = pti+1
+            while (msdi<nbins_msd):
+                if (self.tW[x,1]>msdbins[msdi-1] and self.tW[x,1]<msdbins[msdi]): break
+                msdi = msdi+1
+            if (pti<nbins_pt and msdi<nbins_msd and bkg[msdi,pti]>0.): 
+                weight = sig[msdi,pti]/bkg[msdi,pti]
+                if weight > 10.: weight = 10.
+                elif weight < 0.1: weight = 0.1
+                ptweights_train[x] = weight
+
+        ptweights_val = np.ones(len(self.vW),dtype='f8')
+        for x in range(len(self.vW)):
+            if (self.vY[x,0]==0): continue
+            pti = 1
+            msdi = 1
+            while (pti<nbins_pt):
+                if (self.vW[x,0]>ptbins[pti-1] and self.vW[x,0]<ptbins[pti]): break
+                pti = pti+1
+            while (msdi<nbins_msd):
+                if (self.vW[x,1]>msdbins[msdi-1] and self.vW[x,1]<msdbins[msdi]): break
+                msdi = msdi+1
+            if (pti<nbins_pt and msdi<nbins_msd and bkg[msdi,pti]>0.): 
+                weight = sig[msdi,pti]/bkg[msdi,pti]
+                if weight > 10.: weight = 10.
+                elif weight < 0.1: weight = 0.1
+                ptweights_val[x] = weight
+      
+        self.tW = ptweights_train
+        self.vW = ptweights_val
+        self.W = np.concatenate([self.vW,self.tW])
+        ''' 
+        for x in range(self.W.shape[0]):
 
             pti = 1
             msdi = 1
@@ -116,21 +167,29 @@ class ClassModel(object):
                 if (self.W[x][0]>ptbins[pti-1] and self.W[x][0]<ptbins[pti]): break
                 pti = pti+1
             while (msdi<nbins_msd):
-                if (self.W[x][1]>ptbins[msdi-1] and self.W[x][1]<ptbins[msdi]): break
+                if (self.W[x][1]>msdbins[msdi-1] and self.W[x][1]<msdbins[msdi]): break
                 msdi = msdi+1
+
             if (pti<nbins_pt and msdi<nbins_msd):
                 if (self.Y[x,0]==1):
                     sighist[pti][msdi] = sighist[pti][msdi]+1.
                 else:
                     bkghist[pti][msdi] = bkghist[pti][msdi]+1.
 
-        sighist = sighist/sum(sighist)
-        bkghist = bkghist/sum(bkghist)
-
+        print sighist
+        print bkghist
+        sighist = sighist/np.sum(sighist,axis=(0,1))
+        bkghist = bkghist/np.sum(bkghist,axis=(0,1))
+        weightarr = np.ones(shape=(sighist.shape[0],sighist.shape[1]))
         for x in range(sighist.shape[0]):
           for y in range(sighist.shape[1]):
             if (bkghist[x][y]>0.): print(sighist[x][y]/bkghist[x][y],)
             else: print(1.,)
+            weight = 1.
+            if bkghist[x][y]>0.: weight = sighist[x][y]/bkghist[x][y]
+            if weight > 10.: weight = 10.
+            elif weight < 0.1: weight = 0.1
+            weightarr[x,y] = weight
 
         print('\n')
         for x in range(len(self.tW)):
@@ -141,7 +200,7 @@ class ClassModel(object):
                 if (self.W[x][0]>ptbins[pti-1] and self.W[x][0]<ptbins[pti]): break
                 pti = pti+1
             while (msdi<nbins_msd):
-                if (self.W[x][1]>ptbins[msdi-1] and self.W[x][1]<ptbins[msdi]): break
+                if (self.W[x][1]>msdbins[msdi-1] and self.W[x][1]<msdbins[msdi]): break
                 msdi = msdi+1
             if (pti<nbins_pt and msdi<nbins_msd and bkghist[pti][msdi]>0.): ptweights[x] = sighist[pti][msdi]/bkghist[pti][msdi]
 
@@ -154,24 +213,72 @@ class ClassModel(object):
                 if (self.W[x][0]>ptbins[pti-1] and self.W[x][0]<ptbins[pti]): break
                 pti = pti+1
             while (msdi<nbins_msd):
-                if (self.W[x][1]>ptbins[msdi-1] and self.W[x][1]<ptbins[msdi]): break
+                if (self.W[x][1]>msdbins[msdi-1] and self.W[x][1]<msdbins[msdi]): break
                 msdi = msdi+1
-            if (pti<nbins_pt and msdi<nbins_msd and bkghist[pti][msdi]>0.): ptweights_val[x] = sighist[pti][msdi]/bkghist[pti][msdi]
+            if (pti<nbins_pt and msdi<nbins_msd and bkghist[pti][msdi]>0.): 
+                weight = sighist[pti][msdi]/bkghist[pti][msdi]
+                if weight > 10.: weight = 10.
+                elif weight < 0.1: weight = 0.1
+                ptweights_val[x] = weight #sighist[pti][msdi]/bkghist[pti][msdi]'''
+        #x,y,z = plt.hist(self.tW[self.tY[:,0]==0],nbins+20,weights=ptweights[self.tY[:,0]==1],density=True,range=(400,1500),facecolor='red',alpha=0.5,label='Signal')
+        #x,y,z = plt.hist(self.tW[self.tY[:,0]==0],nbins+20,weights=ptweights[self.tY[:,0]==0],density=True,range=(400,1500),facecolor='blue',alpha=0.5,label='Background')
 
-        x,y,z = plt.hist(self.tW[self.tY[:,0]==1],nbins+20,weights=ptweights[self.tY[:,0]==1],density=True,range=(400,1500),facecolor='red',alpha=0.5,label='Signal')
-        x,y,z = plt.hist(self.tW[self.tY[:,0]==0],nbins+20,weights=ptweights[self.tY[:,0]==0],density=True,range=(400,1500),facecolor='blue',alpha=0.5,label='Background')
-        plt.legend(loc='best')
-        plt.xlabel('pT (GeV)')
-        plt.ylabel('a.u.')
-        plt.savefig(modeldir+'pt_weights.pdf')
-        plt.savefig(modeldir+'pt_weights.png')
+        #H = weightarr
+        '''fig,ax = plt.subplots(figsize=(6, 6))
 
-        #print np.argwhere(np.isnan(ptweights_val)), np.argwhere(np.isnan(ptweights))
-        #print ptweights_val[ptweights_val==0]
-        #print ptweights[ptweights==0]
-
-        self.vW = ptweights_val
-        self.tW = ptweights
+        #ax.set_title('colorMap')
+        plt.imshow(H,cmap=plt.cm.Reds, extent=[ptbins[0],ptbins[nbins_pt],msdbins[0],msdbins[nbins_msd]])
+        #ax.set_zticklabels(fontdict={'fontsize':12})
+        #ax.set_zlabel('weight',fontsize=12)
+        #ax.set_xticklabels(labels=[""],fontdict={'fontsize':12})
+        ax.set_xlabel('pt [GeV]',fontsize=12)
+        #ax.set_yticklabels(labels=[""],fontdict={'fontsize':12})
+        ax.set_ylabel('msd [GeV]',fontsize=12)
+        ax.tick_params(labelsize=10)
+        plt.colorbar(orientation='vertical')
+        plt.savefig('pt_weights.pdf')
+        plt.savefig('pt_weights.png')
+        plt.show()
+        plt.figure()
+        ax = plt.gca()
+        im = plt.imshow(H,cmap=plt.cm.Reds, extent=[msdbins[0],msdbins[nbins_msd],ptbins[0],ptbins[nbins_pt]])
+        ax.set_xlabel('msd [GeV]',fontsize=15)
+        ax.set_ylabel('pt [GeV]',fontsize=15)
+        from mpl_toolkits.axes_grid1 import make_axes_locatable
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        cbar = plt.colorbar(im, cax=cax)
+        cbar.ax.locator_params(nbins=20)
+        plt.savefig('pt_weights.pdf')
+        plt.savefig('pt_weights.png')
+        plt.show()
+        plt.figure()
+        ax = plt.gca()
+        im = plt.imshow(sighist,cmap=plt.cm.Reds, extent=[msdbins[0],msdbins[nbins_msd],ptbins[0],ptbins[nbins_pt]])
+        ax.set_xlabel('msd [GeV]',fontsize=15)
+        ax.set_ylabel('pt [GeV]',fontsize=15)
+        from mpl_toolkits.axes_grid1 import make_axes_locatable
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        cbar = plt.colorbar(im, cax=cax)
+        cbar.ax.locator_params(nbins=20)
+        plt.savefig('sig.pdf')
+        plt.savefig('sig.png')
+        plt.show()
+        plt.figure()
+        ax = plt.gca()
+        im = plt.imshow(bkghist,cmap=plt.cm.Reds, extent=[msdbins[0],msdbins[nbins_msd],ptbins[0],ptbins[nbins_pt]])
+        ax.set_xlabel('msd [GeV]',fontsize=15)
+        ax.set_ylabel('pt [GeV]',fontsize=15)
+        from mpl_toolkits.axes_grid1 import make_axes_locatable
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        cbar = plt.colorbar(im, cax=cax)
+        cbar.ax.locator_params(nbins=20)
+        plt.savefig('bkg.pdf')
+        plt.savefig('bkg.png')
+        plt.show()
+        '''
 
         if 'GRU' in self.name:
             self.tX = np.reshape(self.tX, (self.tX.shape[0], self.tX.shape[1]/Nparts, Nparts))
@@ -219,11 +326,11 @@ class ClassModel(object):
 
 
     def train(self, samples,modeldir="."):
-
-        #print self.tX.shape, self.tY.shape, self.tW.shape 
-        #print self.vX.shape, self.vY.shape, self.vW.shape 
+       
+        print self.tX.shape, self.tY.shape, self.tW.shape 
+        print self.vX.shape, self.vY.shape, self.vW.shape 
         history = self.model.fit(self.tX, self.tY, sample_weight=self.tW, 
-                                 batch_size=5000, epochs=50, shuffle=True,
+                                 batch_size=1000, epochs=30, shuffle=True,
                                  validation_data=(self.vX, self.vY, self.vW),callbacks=[self.es])
         plt.clf()
         plt.plot(history.history['loss'])
@@ -240,6 +347,8 @@ class ClassModel(object):
             for l in zip(*history.values()):
                 flog.write(','.join([str(x) for x in l])+'\n')
 
+    def weights(self):
+        return self.tW,self.vW
     def save_as_keras(self, path):
         _make_parent(path)
         self.model.save(path)
@@ -373,7 +482,7 @@ if __name__ == '__main__':
         samples.reverse()
         roccer_hists = {}
         roccer_hists_SS = {}
-        SS_vars = {'N2':1,'tau21':2}
+        SS_vars = {'N2':1,'deepTagZqq':2}
 
         sig_hists = {}
         bkg_hists = {}
@@ -385,8 +494,8 @@ if __name__ == '__main__':
        
         sig_hists['N2'] = roccer_hists_SS['N2'][SIG]    
         bkg_hists['N2'] = roccer_hists_SS['N2'][BKG]    
-        sig_hists['tau21'] = roccer_hists_SS['tau21'][SIG]  
-        bkg_hists['tau21'] = roccer_hists_SS['tau21'][BKG]    
+        sig_hists['deepTagZqq'] = roccer_hists_SS['deepTagZqq'][SIG]  
+        bkg_hists['deepTagZqq'] = roccer_hists_SS['deepTagZqq'][BKG]    
 
         for model in models:
             for i in xrange(len(samples) if MULTICLASS else 2):
