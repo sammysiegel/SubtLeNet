@@ -7,7 +7,7 @@ from keras.models import Model, load_model
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 #from subtlenet.backend.keras_objects import *
 #from subtlenet.backend.losses import *
-from keras.layers import Dense, BatchNormalization, Input, Dropout, Activation, concatenate, GRU
+from keras.layers import Dense, BatchNormalization, Input, Dropout, Activation, concatenate, GRU,LSTM
 from keras.utils import np_utils
 from keras.optimizers import Adam, Nadam, SGD
 import keras.backend as K
@@ -25,10 +25,10 @@ MULTICLASS = False
 REGRESSION = False
 np.random.seed(10)
 
-basedir = '/home/jeffkrupa/files/deepJet-v6'
-Nqcd = 1000000
-Nsig = 1000000
-Nparts = 20
+basedir = '/home/jeffkrupa/files/deepJet-v9'
+Nqcd = 1740000
+Nsig = 1740000
+Nparts = 30
 
 def newShape(X):
     Xnew = np.zeros((X.shape[0], Nparts, X.shape[1]/Nparts))
@@ -36,6 +36,8 @@ def newShape(X):
         Xnew[i] = np.reshape(X[i],(X.shape[1]/Nparts,Nparts)).T
     return Xnew
 
+def select(X,N):
+    return X[:N]
 def _make_parent(path):
     os.system('mkdir -p %s'%('/'.join(path.split('/')[:-1])))
 
@@ -47,29 +49,24 @@ class Sample(object):
         N = Nqcd if 'QCD' in name else Nsig
 
         self.X = np.load('%s/%s_%s%s.npy'%(base, name, 'x', args.inputtag))[:][:,:] 
-        print self.X[0], self.X.shape
         self.SS = np.load('%s/%s_%s%s.npy'%(base, name, 'ss', args.inputtag))[:]
         self.K = np.load('%s/%s_%s%s.npy'%(base, name, 'w', args.inputtag))[:]
-        self.Y = np_utils.to_categorical((np.load('%s/%s_%s.npy'%(base, name, 'y'))[:N] > 0).astype(np.int), 2)
+        self.Y = np_utils.to_categorical((np.load('%s/%s_%s.npy'%(base, name, 'y'))[:] > 0).astype(np.int), 2)
         self.W = np.ones(self.Y.shape[0])
 
-        print 'before', self.X.shape
         np.random.shuffle(self.X)
         np.random.shuffle(self.SS)
         np.random.shuffle(self.K)
         np.random.shuffle(self.Y)
         np.random.shuffle(self.W)
-        print 'after', self.X.shape
 
-        self.X = self.X[:N]
-        self.SS = self.SS[:N]
-        self.K = self.K[:N]
-        self.Y = self.Y[:N]
-        self.W = self.W[:N]
-
-        #if 'QCD' in name: self.W = np.load('%s/%s_%s.npy'%(base, name, args.wname))[:N]
+        self.X = select(self.X,N)
+        self.SS = select(self.SS,N)
+        self.K = select(self.K,N)
+        self.Y = select(self.Y,N)
+        self.W = select(self.W,N)
         self.idx = np.random.permutation(self.Y.shape[0])
-        print self.Y
+
     @property
     def tidx(self):
         if VALSPLIT == 1 or VALSPLIT == 0:
@@ -83,7 +80,7 @@ class Sample(object):
         else:
             return self.idx[:int(VALSPLIT*len(self.idx))]
     def infer(self, model):
-        if 'GRU' in model.name: self.X = np.reshape(self.X, (self.X.shape[0], self.X.shape[1]/Nparts, Nparts)) 
+        if 'GRU' in model.name: self.X = newShape(self.X)#np.reshape(self.X, (self.X.shape[0], self.X.shape[1]/Nparts, Nparts)) 
         if 'Dense' in model.name: self.X = np.reshape(self.X, (self.X.shape[0],self.X.shape[1]))
         self.Yhat[model.name] = model.predict(self.X)
 
@@ -108,17 +105,13 @@ class ClassModel(object):
         self.tSS = np.vstack([s.SS[s.tidx] for s in samples])
         self.vSS = np.vstack([s.SS[s.vidx] for s in samples])
 
-
-        print self.tX[0]
+        
+        
         self.tX = newShape(self.tX)
         self.vX = newShape(self.vX)
         #self.tX = np.reshape(self.tX, (self.tX.shape[0], self.tX.shape[1]/Nparts, Nparts))
         #self.vX = np.reshape(self.vX, (self.vX.shape[0], self.vX.shape[1]/Nparts, Nparts))
         
-        print 'after', self.tX[0]
-        
-        print self.tY[:100]
-        print self.tW[:100]
         if 'GRU' in self.name:
 
             self.inputs = Input(shape=(self.tX.shape[1],self.tX.shape[2]), name='input')
@@ -126,20 +119,20 @@ class ClassModel(object):
             h = self.inputs
         
             NPARTS=20
-            CLR=0.001
+            CLR=0.0005
             LWR=0.1
-            h = BatchNormalization(input_shape=(self.tX.shape[1],Nparts),momentum=0.6)(h)
+            #h = BatchNormalization(input_shape=(self.tX.shape[1],Nparts),momentum=0.6)(h)
             #gru = GRU(300,activation='relu',recurrent_activation='hard_sigmoid',name='gru_base',activity_regularizer=regularizers.l1(0.01))(h)
-            gru = GRU(10,activation='relu',recurrent_activation='hard_sigmoid',name='gru_base',dropout=0.1)(h)
-            #dense   = Dense(200, activation='relu')(gru)
-            norm    = BatchNormalization(momentum=0.6, name='dense4_bnorm')  (gru)
-            #dense   = Dense(100, activation='relu')(norm)
+            gru = GRU(150)(h)#,activation='relu',recurrent_activation='sigmoid',name='gru_base',dropout=0.1)(h)
+            dense   = Dense(200, activation='relu')(gru)
+            #norm    = BatchNormalization(momentum=0.6, name='dense4_bnorm')  (gru)
+            dense   = Dense(100, activation='relu')(dense)
             #dropout = Dropout(0.2)(dense)# Dense(100, activation='relu')(norm)
             #norm    = BatchNormalization(momentum=0.6, name='dense5_bnorm')  (dropout)
-            dense   = Dense(50, activation='relu')(norm)
-            dropout = Dropout(0.2)(dense)# Dense(100, activation='relu')(norm)
-            norm    = BatchNormalization(momentum=0.6, name='dense6_bnorm')  (dropout)
-            dense   = Dense(20, activation='relu')(norm)
+            dense   = Dense(50, activation='relu')(dense)
+            #dropout = Dropout(0.2)(dense)# Dense(100, activation='relu')(norm)
+            #norm    = BatchNormalization(momentum=0.6, name='dense6_bnorm')  (dropout)
+            dense   = Dense(20, activation='relu')(dense)
             dense   = Dense(10, activation='relu')(dense)
             outputs = Dense(self.n_targets, activation='sigmoid')(dense)
             self.model = Model(inputs=self.inputs, outputs=outputs)
@@ -170,11 +163,9 @@ class ClassModel(object):
         plt.clf()
 
 
-        print self.tK[(self.tY[:,0]==1) & (self.tK[:,0] > 750.)][:100,0]
-        print self.tW[(self.tY[:,0]==1) & (self.tK[:,0] > 750.)][:100]
         fig, ax = plt.subplots()
-        plt.hist(self.tK[self.tY[:,0]==0][:,1],bins=40,range=(40,400),label='sig',alpha=0.5,normed=True)
-        plt.hist(self.tK[self.tY[:,0]==1][:,1],bins=40,range=(40,400),label='bkg_weighted',alpha=0.5,weights=self.tW[self.tY[:,0]==1],normed=True)
+        plt.hist(self.tK[self.tY[:,0]==0][:,1],bins=40,range=(40,400),label='sig',alpha=0.5)
+        plt.hist(self.tK[self.tY[:,0]==1][:,1],bins=40,range=(40,400),label='bkg_weighted',alpha=0.5,weights=self.tW[self.tY[:,0]==1])
         plt.hist(self.tK[self.tY[:,0]==1][:,1],bins=40,range=(40,400),label='bkg',alpha=0.5,normed=True)
         ax.set_xlabel('Jet mass (GeV)')
         plt.legend(loc='upper right')
@@ -184,8 +175,8 @@ class ClassModel(object):
         plt.clf()
 
         fig, ax = plt.subplots()
-        plt.hist(self.tK[self.tY[:,0]==0][:,0],bins=40,range=(400,1500),label='sig',alpha=0.5,normed=True)
-        plt.hist(self.tK[self.tY[:,0]==1][:,0],bins=40,range=(400,1500),label='bkg_weighted',alpha=0.5,weights=self.tW[self.tY[:,0]==1],normed=True)
+        plt.hist(self.tK[self.tY[:,0]==0][:,0],bins=40,range=(400,1500),label='sig',alpha=0.5)
+        plt.hist(self.tK[self.tY[:,0]==1][:,0],bins=40,range=(400,1500),label='bkg_weighted',alpha=0.5,weights=self.tW[self.tY[:,0]==1])
         plt.hist(self.tK[self.tY[:,0]==1][:,0],bins=40,range=(400,1500),label='bkg',alpha=0.5,normed=True)
         ax.set_xlabel('Jet pt (GeV)')
         plt.legend(loc='upper right')
@@ -195,7 +186,7 @@ class ClassModel(object):
     def train(self, samples,modeldir="."):
        
         history = self.model.fit(self.tX, self.tY, sample_weight=self.tW, 
-                                 batch_size=1000, epochs=100, shuffle=True,
+                                 batch_size=1000, epochs=50, shuffle=True,
                                  validation_data=(self.vX, self.vY, self.vW),callbacks=[self.es,self.cp])
         plt.clf()
         plt.plot(history.history['loss'])
@@ -269,6 +260,7 @@ if __name__ == '__main__':
     parser.add_argument('--version', type=int, default=0)
     parser.add_argument('--wname', type=str, default="w")
     parser.add_argument('--inputtag', type=str, default="")
+    parser.add_argument('--tmp', action='store_true')
     global args
     args = parser.parse_args()
     print "using weight %s"%args.wname 
@@ -318,12 +310,16 @@ if __name__ == '__main__':
             modelGRU.save_as_tf(modeldir+'/graph_gru.pb')
         else:
             print 'Loading gru...'
-            modelGRU.load_model(modeldir+'weights_gru.h5')
+
+            if not args.tmp: modelGRU.load_model(modeldir+'weights_gru.h5')
+            else: modelGRU.load_model(modeldir+'tmp.h5')
         if args.plot:
             for s in samples:
               s.infer(modelGRU)
         del modelGRU
 
+    import shutil
+    shutil.copyfile("/home/jeffkrupa/SubtLeNet/train/dazsle-tagger/dt.py","/home/jeffkrupa/SubtLeNet/train/dazsle-tagger/"+modeldir+"dt_v%i.py"%args.version)
     if args.plot:
 
         samples.reverse()
