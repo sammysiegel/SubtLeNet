@@ -25,19 +25,23 @@ MULTICLASS = False
 REGRESSION = False
 np.random.seed(10)
 
-basedir = '/home/jeffkrupa/files/deepJet-v9'
-Nqcd = 1740000
-Nsig = 1740000
+basedir = '/eos/uscms/store/user/jkrupa/training/SVs-v1'
+Nqcd = 1700000
+Nsig = 1700000
 Nparts = 30
+NSVs = 5
+def newShape(X,name='parts'):
 
-def newShape(X):
-    Xnew = np.zeros((X.shape[0], Nparts, X.shape[1]/Nparts))
+    Ndims = Nparts if 'parts' in name else NSVs
+    Xnew = np.zeros((X.shape[0], Ndims, X.shape[1]/Ndims))
     for i in range(0,X.shape[0]):
-        Xnew[i] = np.reshape(X[i],(X.shape[1]/Nparts,Nparts)).T
+        Xnew[i] = np.reshape(X[i],(X.shape[1]/Ndims,Ndims)).T
     return Xnew
 
 def select(X,N):
+    np.random.shuffle(X)
     return X[:N]
+
 def _make_parent(path):
     os.system('mkdir -p %s'%('/'.join(path.split('/')[:-1])))
 
@@ -51,14 +55,17 @@ class Sample(object):
         self.X = np.load('%s/%s_%s%s.npy'%(base, name, 'x', args.inputtag))[:][:,:] 
         self.SS = np.load('%s/%s_%s%s.npy'%(base, name, 'ss', args.inputtag))[:]
         self.K = np.load('%s/%s_%s%s.npy'%(base, name, 'w', args.inputtag))[:]
-        self.Y = np_utils.to_categorical((np.load('%s/%s_%s.npy'%(base, name, 'y'))[:] > 0).astype(np.int), 2)
-        self.W = np.ones(self.Y.shape[0])
+        #self.Y = np_utils.to_categorical((np.load('%s/%s_%s.npy'%(base, name, 'y'))[:] > 0).astype(np.int), 2)
+        self.Y = np.load('%s/%s_%s.npy'%(base, name, 'y'))[:]
 
-        np.random.shuffle(self.X)
-        np.random.shuffle(self.SS)
-        np.random.shuffle(self.K)
-        np.random.shuffle(self.Y)
-        np.random.shuffle(self.W)
+   
+        if args.SV:
+          self.SV_X = np.load('%s/%s_%s.npy'%(base, name, 'SV_x'))[:]
+          self.SV_Y = np_utils.to_categorical((np.load('%s/%s_%s.npy'%(base, name, 'SV_y'))[:] > 0).astype(np.int),3)[:,2]
+   
+          self.Y = np.concatenate((self.Y, self.SV_Y),axis=1)
+
+        self.W = np.ones(self.Y.shape[0])
 
         self.X = select(self.X,N)
         self.SS = select(self.SS,N)
@@ -80,7 +87,9 @@ class Sample(object):
         else:
             return self.idx[:int(VALSPLIT*len(self.idx))]
     def infer(self, model):
-        if 'GRU' in model.name: self.X = newShape(self.X)#np.reshape(self.X, (self.X.shape[0], self.X.shape[1]/Nparts, Nparts)) 
+        if 'GRU' in model.name: 
+          self.X = newShape(self.X)#np.reshape(self.X, (self.X.shape[0], self.X.shape[1]/Nparts, Nparts)) 
+          if args.SV: self.SV_X = newShape(self.SV_X, 'SV')
         if 'Dense' in model.name: self.X = np.reshape(self.X, (self.X.shape[0],self.X.shape[1]))
         self.Yhat[model.name] = model.predict(self.X)
 
@@ -106,36 +115,42 @@ class ClassModel(object):
         self.vSS = np.vstack([s.SS[s.vidx] for s in samples])
 
         
-        
         self.tX = newShape(self.tX)
         self.vX = newShape(self.vX)
-        #self.tX = np.reshape(self.tX, (self.tX.shape[0], self.tX.shape[1]/Nparts, Nparts))
-        #self.vX = np.reshape(self.vX, (self.vX.shape[0], self.vX.shape[1]/Nparts, Nparts))
+
+        if args.SV: 
+          self.tSV_X = np.vstack([s.SV_X[:][s.tidx] for s in samples])
+          self.vSV_X = np.vstack([s.SV_X[:][s.vidx] for s in samples])
+          self.tSV_X = newShape(self.tSV_X,'SV')
+          self.vSV_X = newShape(self.vSV_X,'SV')
         
         if 'GRU' in self.name:
 
-            self.inputs = Input(shape=(self.tX.shape[1],self.tX.shape[2]), name='input')
-            #self.inputs = Input(shape=(self.tX.shape[1], Nparts), name='input')
+            self.inputs   = Input(shape=(self.tX.shape[1],self.tX.shape[2]), name='input')
+            self.inputsSV = Input(shape=(self.tSV.shape[1],self.tSV.shape[2]), name='input')
             h = self.inputs
         
             NPARTS=20
             CLR=0.0005
             LWR=0.1
-            #h = BatchNormalization(input_shape=(self.tX.shape[1],Nparts),momentum=0.6)(h)
-            #gru = GRU(300,activation='relu',recurrent_activation='hard_sigmoid',name='gru_base',activity_regularizer=regularizers.l1(0.01))(h)
-            gru = GRU(150)(h)#,activation='relu',recurrent_activation='sigmoid',name='gru_base',dropout=0.1)(h)
-            dense   = Dense(200, activation='relu')(gru)
-            #norm    = BatchNormalization(momentum=0.6, name='dense4_bnorm')  (gru)
+
+            gru = GRU(150)(self.inputs)#,activation='relu',recurrent_activation='sigmoid',name='gru_base',dropout=0.1)(h)
+            if args.SV:
+               gruSV = GRU(100)(self.inputsSV)
+               combined = concatenate([gru.output,gruSV.output])
+
+            if not (args.SV): dense   = Dense(200, activation='relu')(gru)
+            else:             dense   = Dense(250, activation='relu')(combined)
             dense   = Dense(100, activation='relu')(dense)
-            #dropout = Dropout(0.2)(dense)# Dense(100, activation='relu')(norm)
-            #norm    = BatchNormalization(momentum=0.6, name='dense5_bnorm')  (dropout)
             dense   = Dense(50, activation='relu')(dense)
-            #dropout = Dropout(0.2)(dense)# Dense(100, activation='relu')(norm)
-            #norm    = BatchNormalization(momentum=0.6, name='dense6_bnorm')  (dropout)
             dense   = Dense(20, activation='relu')(dense)
             dense   = Dense(10, activation='relu')(dense)
             outputs = Dense(self.n_targets, activation='sigmoid')(dense)
-            self.model = Model(inputs=self.inputs, outputs=outputs)
+
+            if not (args.SV): self.model = Model(inputs=self.inputs, outputs=outputs)
+            else:             self.model = Model(inputs=[self.inputs,self.inputsSV], outputs=outputs)
+
+         
 
             self.model.compile(loss='binary_crossentropy', optimizer=Adam(CLR), metrics=['accuracy'])
             self.es = EarlyStopping(monitor='loss', mode='min', verbose=1, patience=2)
@@ -184,10 +199,18 @@ class ClassModel(object):
         plt.savefig(figdir+'pt.png')
 
     def train(self, samples,modeldir="."):
-       
-        history = self.model.fit(self.tX, self.tY, sample_weight=self.tW, 
+    
+        if not args.SV:    
+           history = self.model.fit(self.tX, self.tY, sample_weight=self.tW, 
                                  batch_size=1000, epochs=50, shuffle=True,
-                                 validation_data=(self.vX, self.vY, self.vW),callbacks=[self.es,self.cp])
+                                 validation_data=(self.vX, self.vY, self.vW),
+                                 callbacks=[self.es,self.cp])
+        else:    
+           history = self.model.fit([self.tX, self.tSV],
+                                 self.tY, sample_weight=self.tW, 
+                                 batch_size=1000, epochs=50, shuffle=True,
+                                 validation_data=([self.vX, self.vSV], self.vY, self.vW),
+                                 callbacks=[self.es,self.cp])
         plt.clf()
         plt.plot(history.history['loss'])
         plt.plot(history.history['val_loss'])
@@ -261,6 +284,7 @@ if __name__ == '__main__':
     parser.add_argument('--wname', type=str, default="w")
     parser.add_argument('--inputtag', type=str, default="")
     parser.add_argument('--tmp', action='store_true')
+    parser.add_argument('--SV', action='store_true')
     global args
     args = parser.parse_args()
     print "using weight %s"%args.wname 
