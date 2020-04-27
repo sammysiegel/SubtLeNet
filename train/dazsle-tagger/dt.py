@@ -7,7 +7,7 @@ from keras.models import Model, load_model
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 #from subtlenet.backend.keras_objects import *
 #from subtlenet.backend.losses import *
-from keras.layers import Dense, BatchNormalization, Input, Dropout, Activation, concatenate, GRU,LSTM
+from keras.layers import Dense, BatchNormalization, Input, Dropout, Activation, concatenate, GRU,LSTM, Add
 from keras.utils import np_utils
 from keras.optimizers import Adam, Nadam, SGD
 import keras.backend as K
@@ -21,18 +21,17 @@ from keras import regularizers
 import subtlenet.utils as utils 
 #utils.set_processor('gpu')
 VALSPLIT = 0.3 #0.7
-MULTICLASS = False
+MULTICLASS = True
 REGRESSION = False
 np.random.seed(10)
 
-basedir = '/eos/uscms/store/user/jkrupa/training/SVs-v1'
-Nqcd = 1700000
-Nsig = 1700000
+basedir = '/home/jeffkrupa/files/SV-v2'
+Nqcd = 2000000
+Nsig = 2000000
 Nparts = 30
 NSVs = 5
 def newShape(X,name='parts'):
-
-    Ndims = Nparts if 'parts' in name else NSVs
+    Ndims = Nparts if 'parts' in name else 5 #NSVs
     Xnew = np.zeros((X.shape[0], Ndims, X.shape[1]/Ndims))
     for i in range(0,X.shape[0]):
         Xnew[i] = np.reshape(X[i],(X.shape[1]/Ndims,Ndims)).T
@@ -55,16 +54,19 @@ class Sample(object):
         self.X = np.load('%s/%s_%s%s.npy'%(base, name, 'x', args.inputtag))[:][:,:] 
         self.SS = np.load('%s/%s_%s%s.npy'%(base, name, 'ss', args.inputtag))[:]
         self.K = np.load('%s/%s_%s%s.npy'%(base, name, 'w', args.inputtag))[:]
-        #self.Y = np_utils.to_categorical((np.load('%s/%s_%s.npy'%(base, name, 'y'))[:] > 0).astype(np.int), 2)
-        self.Y = np.load('%s/%s_%s.npy'%(base, name, 'y'))[:]
+        self.Y = np_utils.to_categorical((np.load('%s/%s_%s.npy'%(base, name, 'y'))[:] > 0).astype(np.int), 2)
+        #self.Y = np.load('%s/%s_%s.npy'%(base, name, 'y'))[:]
 
    
         if args.SV:
           self.SV_X = np.load('%s/%s_%s.npy'%(base, name, 'SV_x'))[:]
-          self.SV_Y = np_utils.to_categorical((np.load('%s/%s_%s.npy'%(base, name, 'SV_y'))[:] > 0).astype(np.int),3)[:,2]
-   
-          self.Y = np.concatenate((self.Y, self.SV_Y),axis=1)
+          self.SV_Y = np_utils.to_categorical((np.load('%s/%s_%s.npy'%(base, name, 'SV_y'))[:] > 0).astype(np.int),2)[:,1]
+          self.Y = np.vstack((self.Y.T, self.SV_Y.T)).T
+          self.SV_X = select(self.SV_X,N)
 
+        #if not args.SV: self.Y = np.transpose(self.Y)
+        print self.Y.shape
+        print self.Y[0:100]
         self.W = np.ones(self.Y.shape[0])
 
         self.X = select(self.X,N)
@@ -73,6 +75,7 @@ class Sample(object):
         self.Y = select(self.Y,N)
         self.W = select(self.W,N)
         self.idx = np.random.permutation(self.Y.shape[0])
+
 
     @property
     def tidx(self):
@@ -91,13 +94,15 @@ class Sample(object):
           self.X = newShape(self.X)#np.reshape(self.X, (self.X.shape[0], self.X.shape[1]/Nparts, Nparts)) 
           if args.SV: self.SV_X = newShape(self.SV_X, 'SV')
         if 'Dense' in model.name: self.X = np.reshape(self.X, (self.X.shape[0],self.X.shape[1]))
-        self.Yhat[model.name] = model.predict(self.X)
+        if not args.SV: self.Yhat[model.name] = model.predict(self.X)
+        else:           self.Yhat[model.name] = model.predict([self.X,self.SV_X])
 
 class ClassModel(object):
     def __init__(self, n_inputs, h_hidden, n_targets, samples, model, modeldir="."):
         self._hidden = 0
         self.name = model
         self.n_inputs = n_inputs
+        print n_targets
         self.n_targets = n_targets if MULTICLASS else 2
         self.n_hidden = n_hidden
 
@@ -114,7 +119,6 @@ class ClassModel(object):
         self.tSS = np.vstack([s.SS[s.tidx] for s in samples])
         self.vSS = np.vstack([s.SS[s.vidx] for s in samples])
 
-        
         self.tX = newShape(self.tX)
         self.vX = newShape(self.vX)
 
@@ -127,20 +131,21 @@ class ClassModel(object):
         if 'GRU' in self.name:
 
             self.inputs   = Input(shape=(self.tX.shape[1],self.tX.shape[2]), name='input')
-            self.inputsSV = Input(shape=(self.tSV.shape[1],self.tSV.shape[2]), name='input')
             h = self.inputs
         
             NPARTS=20
-            CLR=0.0005
+            CLR=0.001
             LWR=0.1
 
-            gru = GRU(150)(self.inputs)#,activation='relu',recurrent_activation='sigmoid',name='gru_base',dropout=0.1)(h)
+            gru = GRU(100)(self.inputs)#,activation='relu',recurrent_activation='sigmoid',name='gru_base',dropout=0.1)(h)
             if args.SV:
-               gruSV = GRU(100)(self.inputsSV)
-               combined = concatenate([gru.output,gruSV.output])
+               self.inputsSV = Input(shape=(self.tSV_X.shape[1],self.tSV_X.shape[2]), name='input_SV')
+               gruSV = GRU(50)(self.inputsSV)
+               combined = concatenate([gru,gruSV])
+               #combined = Add()([gru,gruSV])
 
             if not (args.SV): dense   = Dense(200, activation='relu')(gru)
-            else:             dense   = Dense(250, activation='relu')(combined)
+            else:             dense   = Dense(150, activation='relu')(combined)
             dense   = Dense(100, activation='relu')(dense)
             dense   = Dense(50, activation='relu')(dense)
             dense   = Dense(20, activation='relu')(dense)
@@ -152,7 +157,7 @@ class ClassModel(object):
 
          
 
-            self.model.compile(loss='binary_crossentropy', optimizer=Adam(CLR), metrics=['accuracy'])
+            self.model.compile(loss='categorical_crossentropy', optimizer=Adam(CLR), metrics=['categorical_accuracy','top_k_categorical_accuracy'])
             self.es = EarlyStopping(monitor='loss', mode='min', verbose=1, patience=2)
             self.cp = ModelCheckpoint(modeldir+'/tmp.h5', monitor='loss', verbose=1, save_best_only=True, mode='min')
 
@@ -205,11 +210,11 @@ class ClassModel(object):
                                  batch_size=1000, epochs=50, shuffle=True,
                                  validation_data=(self.vX, self.vY, self.vW),
                                  callbacks=[self.es,self.cp])
-        else:    
-           history = self.model.fit([self.tX, self.tSV],
+        else:   
+           history = self.model.fit([self.tX, self.tSV_X],
                                  self.tY, sample_weight=self.tW, 
                                  batch_size=1000, epochs=50, shuffle=True,
-                                 validation_data=([self.vX, self.vSV], self.vY, self.vW),
+                                 validation_data=([self.vX, self.vSV_X], self.vY, self.vW),
                                  callbacks=[self.es,self.cp])
         plt.clf()
         plt.plot(history.history['loss'])
@@ -308,7 +313,7 @@ if __name__ == '__main__':
 
     n_hidden = 5
     if 'Dense' in models:
-        modelDNN = ClassModel(n_inputs, n_hidden, len(samples),samples,'Dense',modeldir)
+        modelDNN = ClassModel(n_inputs, n_hidden, samples[0].Y.shape[1],samples,'Dense',modeldir)
         if args.train:
             print 'Training dense...'
             modelDNN.train(samples,modeldir)
@@ -325,8 +330,8 @@ if __name__ == '__main__':
         del modelDNN
 
     if 'GRU' in models:
-        modelGRU = ClassModel(n_inputs, n_hidden, len(samples),samples,'GRU',modeldir)
-        modelGRU.plot(figsdir)
+        modelGRU = ClassModel(n_inputs, n_hidden, samples[0].Y.shape[1],samples,'GRU',modeldir)
+        #modelGRU.plot(figsdir)
         if args.train:
             print 'Training gru...'
             modelGRU.train(samples,figsdir)
