@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+import os, sys
+os.environ['KERAS_BACKEND'] = 'tensorflow'
 from sklearn.metrics import auc
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve
@@ -12,12 +14,11 @@ from keras.utils import np_utils
 from keras.optimizers import Adam, Nadam, SGD
 import keras.backend as K
 from tensorflow.python.framework import graph_util, graph_io
-import os, sys
 import numpy as np
 import pandas as pd
 from collections import namedtuple
 from keras import regularizers
-
+os.environ['KERAS_BACKEND'] = 'tensorflow'
 import subtlenet.utils as utils 
 #utils.set_processor('gpu')
 VALSPLIT = 0.3 #0.7
@@ -25,10 +26,10 @@ MULTICLASS = True
 REGRESSION = False
 np.random.seed(10)
 
-basedir = '/home/jeffkrupa/files/SV-v2'
-Nqcd = 2000000
-Nsig = 2000000
-Nparts = 30
+basedir = '/data/t3home000/jkrupa/training_data'
+Nqcd = 10000
+Nsig = 10000
+Nparts = 25
 NSVs = 5
 def newShape(X,name='parts'):
     Ndims = Nparts if 'parts' in name else 5 #NSVs
@@ -54,7 +55,7 @@ class Sample(object):
         self.X = np.load('%s/%s_%s%s.npy'%(base, name, 'x', args.inputtag))[:][:,:] 
         self.SS = np.load('%s/%s_%s%s.npy'%(base, name, 'ss', args.inputtag))[:]
         self.K = np.load('%s/%s_%s%s.npy'%(base, name, 'w', args.inputtag))[:]
-        self.Y = np_utils.to_categorical((np.load('%s/%s_%s.npy'%(base, name, 'y'))[:] > 0).astype(np.int), 2)
+        self.Y = np_utils.to_categorical((np.load('%s/%s_%s%s.npy'%(base, name, 'y', args.inputtag))[:] > 0).astype(np.int), 2)
         #self.Y = np.load('%s/%s_%s.npy'%(base, name, 'y'))[:]
 
    
@@ -157,7 +158,8 @@ class ClassModel(object):
 
          
 
-            self.model.compile(loss='categorical_crossentropy', optimizer=Adam(CLR), metrics=['categorical_accuracy','top_k_categorical_accuracy'])
+            self.model.compile(optimizer=Adam(), loss='binary_crossentropy', metrics=['accuracy',])
+            #self.model.compile(loss='categorical_crossentropy', optimizer=adam(clr), metrics=['categorical_accuracy','top_k_categorical_accuracy'])
             self.es = EarlyStopping(monitor='loss', mode='min', verbose=1, patience=2)
             self.cp = ModelCheckpoint(modeldir+'/tmp.h5', monitor='loss', verbose=1, save_best_only=True, mode='min')
 
@@ -348,13 +350,17 @@ if __name__ == '__main__':
         del modelGRU
 
     import shutil
+    pwd = os.getcwd()
+    shutil.copyfile(pwd+"dt.py",pwd+"%sdt_v%i.py"%(modeldir,args.version))
+
+    import shutil
     shutil.copyfile("/home/jeffkrupa/SubtLeNet/train/dazsle-tagger/dt.py","/home/jeffkrupa/SubtLeNet/train/dazsle-tagger/"+modeldir+"dt_v%i.py"%args.version)
     if args.plot:
 
         samples.reverse()
         roccer_hists = {}
         roccer_hists_SS = {}
-        SS_vars = {'N2':1,'deepTagZqq':2}
+        SS_vars = {'N2':1,}#'deepTagZqq':2}
 
         sig_hists = {}
         bkg_hists = {}
@@ -366,8 +372,8 @@ if __name__ == '__main__':
        
         sig_hists['N2'] = roccer_hists_SS['N2'][SIG]    
         bkg_hists['N2'] = roccer_hists_SS['N2'][BKG]    
-        sig_hists['deepTagZqq'] = roccer_hists_SS['deepTagZqq'][SIG]  
-        bkg_hists['deepTagZqq'] = roccer_hists_SS['deepTagZqq'][BKG]    
+        #sig_hists['deepTagZqq'] = roccer_hists_SS['deepTagZqq'][SIG]  
+        #bkg_hists['deepTagZqq'] = roccer_hists_SS['deepTagZqq'][BKG]    
 
         for model in models:
             for i in xrange(len(samples) if MULTICLASS else 2):
@@ -387,7 +393,7 @@ if __name__ == '__main__':
                     bkg_hists,
                     {'Dense':'Dense',
 		     'GRU':'GRU',
-                     'N2':'N2',
-                     'deepZqq':'deepZqq'}
+                     'N2':'N2',}
+                     #'deepZqq':'deepZqq'}
         )
         r1.plot(figsdir+'class_%s_ROC'%(str(args.version)))                 
