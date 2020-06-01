@@ -351,7 +351,7 @@ if __name__ == '__main__':
 
     import shutil
     pwd = os.getcwd()
-    shutil.copyfile(pwd+"dt.py",pwd+"%sdt_v%i.py"%(modeldir,args.version))
+    shutil.copyfile(pwd+"dt.py",pwd+"%s/dt_v%i.py"%(modeldir,args.version))
 
     import shutil
     shutil.copyfile("/home/jeffkrupa/SubtLeNet/train/dazsle-tagger/dt.py","/home/jeffkrupa/SubtLeNet/train/dazsle-tagger/"+modeldir+"dt_v%i.py"%args.version)
